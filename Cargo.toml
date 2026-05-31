@@ -1,10 +1,25 @@
 [workspace]
 members = [
     "crates/velo-core",
-    "crates/velo-dom",
-    "crates/velo-macro",
-    "crates/velo-router",
-    "crates/velo-cli",
-    "examples/counter-spa"
+    # "crates/velo-dom",
+    # "crates/velo-macro",
+    # "crates/velo-router",
+    # "examples/counter-spa",
 ]
 resolver = "2"
+
+# Centralized dependency management for the workspace
+[workspace.dependencies]
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+js-sys = "0.3"
+
+# Release profile tuned for ultra-fast, tiny WebAssembly binaries
+[profile.release]
+opt-level = "z"   # Optimize for size while keeping high execution speed
+lto = true        # Link-Time Optimization across all crates
+codegen-units = 1 # Maximize optimization at the cost of compile time
+panic = "abort"   # Drop panic strings to heavily reduce binary bloat
