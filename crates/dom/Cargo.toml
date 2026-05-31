@@ -1,0 +1,22 @@
+[package]
+name = "dom"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core = { path = "../core" }
+wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Node",
+    "Text",
+    "Window",
+    "Event",
+    "MouseEvent",
+]
