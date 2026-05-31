@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "crates/velo-core",
+    "crates/velo-dom",
+    "crates/velo-macro",
+    "crates/velo-router",
+    "crates/velo-cli",
+    "examples/counter-spa"
+]
+resolver = "2"
