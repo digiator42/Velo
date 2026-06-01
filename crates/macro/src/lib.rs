@@ -128,13 +128,8 @@ impl ToTokens for VNode {
                 });
             }
             VNode::ReactiveExpression(expr) => {
-                // Highly critical for SPA performance:
-                // Auto-wrap reactive variables in an isolated, fine-grained thread-safe closure bundle
                 tokens.extend(quote! {
-                    dom::DomNode::reactive_text({
-                        let mut _expr_clone = #expr;
-                        move || format!("{}", _expr_clone)
-                    })
+                    dom::DomNode::render_expression(move || #expr)
                 });
             }
             VNode::Element {

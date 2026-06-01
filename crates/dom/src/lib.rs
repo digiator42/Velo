@@ -11,6 +11,24 @@ pub fn document() -> Document {
         .expect("Velo: Window should contain a valid document.")
 }
 
+pub trait RenderDynamic {
+    fn render_dynamic(self) -> DomNode;
+}
+
+// Case A: The expression inside the braces returns a DomNode (like a sub-component)
+impl RenderDynamic for DomNode {
+    fn render_dynamic(self) -> DomNode {
+        self
+    }
+}
+
+// Case B: The expression returns something that can be displayed (like an i32 or String)
+impl<T: std::fmt::Display + 'static> RenderDynamic for T {
+    fn render_dynamic(self) -> DomNode {
+        DomNode::text(&format!("{}", self))
+    }
+}
+
 /// A wrapper around a real native browser DOM element
 pub struct DomNode {
     pub raw_node: Node,
@@ -97,6 +115,55 @@ impl DomNode {
 
         // Prevent Rust from cleaning up the closure allocation context immediately
         closure.forget();
+    }
+
+    /// Explicitly handles components, sub-views, or existing DomNodes passed into braces
+    pub fn from_node(node: DomNode) -> Self {
+        node
+    }
+
+    /// Explicitly handles dynamic closures passed into braces for surgical text updates
+    pub fn from_closure<F>(mut f: F) -> Self
+    where
+        F: FnMut() -> String + 'static,
+    {
+        Self::reactive_text(move || f())
+    }
+
+    /// Accepts a closure from the macro, evaluates it inside an effect loop,
+    /// and resolves whether it's rendering a component or text dynamically!
+    pub fn render_expression<F, R>(mut f: F) -> Self
+    where
+        F: FnMut() -> R + 'static,
+        R: RenderDynamic + 'static,
+    {
+        // We create an element container wrapper to securely hold whatever the expression returns
+        let container = document()
+            .create_element("div")
+            .expect("Velo: Failed to create expression wrapper block");
+        container
+            .set_attribute("class", "velo-expression-wrapper")
+            .unwrap();
+
+        let container_raw = container.clone();
+        let mut f_clone = move || f();
+
+        core::create_effect(move || {
+            let val = f_clone();
+            let resolved_node = val.render_dynamic();
+
+            // Clear out old nodes from the wrapper before inserting the updated evaluation
+            container_raw.set_text_content(None);
+
+            // Append the fresh node into the live layout tree
+            container_raw
+                .append_child(&resolved_node.raw_node)
+                .expect("Velo: Failed to append dynamic expression variant");
+        });
+
+        Self {
+            raw_node: container.into(),
+        }
     }
 }
 
