@@ -93,6 +93,13 @@ impl<T: Clone + 'static> Signal<T> {
             }
         }
     }
+
+    pub fn mount_effect(&self, effect: Rc<RefCell<Effect>>) {
+        let mut subs = self.subscribers.borrow_mut();
+        if !subs.iter().any(|s| s.borrow().id == effect.borrow().id) {
+            subs.push(effect);
+        }
+    }
 }
 
 pub fn create_effect<F>(func: F)
