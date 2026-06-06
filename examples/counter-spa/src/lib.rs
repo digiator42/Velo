@@ -13,13 +13,22 @@ fn home_page() -> DomNode {
     }
 }
 
+fn profile_page() -> DomNode {
+    let user_name = Signal::new("Guest".to_string());
+
+    view! {
+        <div class="page profile">
+            <h1>"User Profile"</h1>
+            <p>"Hello, " { user_name.get() } "!"</p>
+        </div>
+    }
+}
+
 fn dashboard_page() -> DomNode {
     // Shared state managed cleanly in component scopes
     let count = Signal::new(0);
 
-    // Create unique, cheap pointer clones for each isolated reactive consumer scope
     let count_text = count.clone();
-    let count_click = count.clone();
 
     view! {
         <div class="page dashboard">
@@ -30,7 +39,7 @@ fn dashboard_page() -> DomNode {
                 <h2>{ count_text.get() }</h2>
 
                 // Pass the dedicated mutation pointer here and use a clear statement block
-                <button on:click={ move |_| { count_click.set(count_click.get() + 1); } }>
+                <button on:click={ move |_| { count.set(count.get() + 1); } }>
                     "Surgical Increment"
                 </button>
             </div>
@@ -51,6 +60,8 @@ pub fn run_app() {
                 { link("/", "Home Navigation") }
                 " | "
                 { link("/dashboard", "Dashboard System") }
+                " | "
+                { link("/profile", "Profile Management") }
             </nav>
             <hr />
             {
@@ -58,6 +69,7 @@ pub fn run_app() {
                     match path {
                         "/" => home_page(),
                         "/dashboard" => dashboard_page(),
+                        "/profile" => profile_page(),
                         _ => view! { <h1>"404 - Engine Page Not Found"</h1> }
                     }
                 })

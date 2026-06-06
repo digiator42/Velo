@@ -137,9 +137,9 @@ impl DomNode {
         F: FnMut() -> R + 'static,
         R: RenderDynamic + 'static,
     {
-        // We create an element container wrapper to securely hold whatever the expression returns
+        // Change "div" to "span" to make the expression wrapper an inline element!
         let container = document()
-            .create_element("div")
+            .create_element("span")
             .expect("Velo: Failed to create expression wrapper block");
         container
             .set_attribute("class", "velo-expression-wrapper")
@@ -152,10 +152,8 @@ impl DomNode {
             let val = f_clone();
             let resolved_node = val.render_dynamic();
 
-            // Clear out old nodes from the wrapper before inserting the updated evaluation
             container_raw.set_text_content(None);
 
-            // Append the fresh node into the live layout tree
             container_raw
                 .append_child(&resolved_node.raw_node)
                 .expect("Velo: Failed to append dynamic expression variant");

@@ -55,10 +55,7 @@ impl<T: Clone + 'static> Signal<T> {
                         .iter()
                         .find(|e| e.borrow().id == current_id)
                     {
-                        let mut subs = self.subscribers.borrow_mut();
-                        if !subs.iter().any(|s| s.borrow().id == current_id) {
-                            subs.push(Rc::clone(effect_rc));
-                        }
+                        self.mount_effect(effect_rc);
                     }
                 });
             }
@@ -94,10 +91,10 @@ impl<T: Clone + 'static> Signal<T> {
         }
     }
 
-    pub fn mount_effect(&self, effect: Rc<RefCell<Effect>>) {
+    pub fn mount_effect(&self, effect: &Rc<RefCell<Effect>>) {
         let mut subs = self.subscribers.borrow_mut();
         if !subs.iter().any(|s| s.borrow().id == effect.borrow().id) {
-            subs.push(effect);
+            subs.push(Rc::clone(effect));
         }
     }
 }
