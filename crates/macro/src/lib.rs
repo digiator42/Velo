@@ -128,53 +128,86 @@ impl ToTokens for VNode {
                 });
             }
             VNode::ReactiveExpression(expr) => {
-                tokens.extend(quote! {
-                    dom::DomNode::render_expression(move || #expr)
-                });
+                // Convert the expression to a string to check if the user passed a manual closure block
+                let expr_string = quote! { #expr }.to_string();
+
+                if expr_string.starts_with("move") || expr_string.starts_with("||") {
+                    // If the developer already provided a closure, don't double-wrap it!
+                    tokens.extend(quote! {
+                        dom::DomNode::render_expression(#expr)
+                    });
+                } else {
+                    // If it's a simple variable or function call, wrap it in a closure for reactive tracking
+                    tokens.extend(quote! {
+                        dom::DomNode::render_expression(move || #expr)
+                    });
+                }
             }
             VNode::Element {
                 tag_name,
                 attributes,
                 children,
             } => {
-                let mut setup_statements = Vec::new();
+                let first_char = tag_name.chars().next().unwrap_or(' ');
 
-                // Code block generation steps
-                setup_statements.push(quote! {
-                    let parent_node = dom::DomNode::element(#tag_name);
-                });
+                //COMPONENT DETECTION ENGINE
+                if first_char.is_uppercase() {
+                    // Turn the string "UserProfile" into a valid compiler function Identifier token
+                    let component_ident = syn::Ident::new(tag_name, proc_macro2::Span::call_site());
 
-                // Attach attributes and reactive click hooks cleanly
-                for attr in attributes {
-                    let key = &attr.key;
-                    let val = &attr.value;
+                    // Map the macro attributes into normal function arguments
+                    let mut args = Vec::new();
+                    for attr in attributes {
+                        let val = &attr.value;
+                        args.push(quote! { #val });
+                    }
 
-                    if key.starts_with("on:") {
-                        let event_type = key.strip_prefix("on:").unwrap();
+                    // Optional: If your component accepts nested children inside its tags,
+                    // you can automatically append them as a vector or an extra trailing parameter!
+
+                    tokens.extend(quote! {
+                        #component_ident(#(#args),*)
+                    });
+                } else {
+                    let mut setup_statements = Vec::new();
+
+                    // Code block generation steps
+                    setup_statements.push(quote! {
+                        let parent_node = dom::DomNode::element(#tag_name);
+                    });
+
+                    // Attach attributes and reactive click hooks cleanly
+                    for attr in attributes {
+                        let key = &attr.key;
+                        let val = &attr.value;
+
+                        if key.starts_with("on:") {
+                            let event_type = key.strip_prefix("on:").unwrap();
+                            setup_statements.push(quote! {
+                                parent_node.on(#event_type, #val);
+                            });
+                        } else {
+                            // Dynamically update the node attribute if specified as raw code block variables
+                            setup_statements.push(quote! {
+                                parent_node.reactive_attribute(#key, move || format!("{}", #val));
+                            });
+                        }
+                    }
+
+                    // Recursively append compiled child structures
+                    for child in children {
                         setup_statements.push(quote! {
-                            parent_node.on(#event_type, #val);
-                        });
-                    } else {
-                        // Dynamically update the node attribute if specified as raw code block variables
-                        setup_statements.push(quote! {
-                            parent_node.reactive_attribute(#key, move || format!("{}", #val));
+                            parent_node.append(&#child);
                         });
                     }
-                }
 
-                // Recursively append compiled child structures
-                for child in children {
-                    setup_statements.push(quote! {
-                        parent_node.append(&#child);
+                    tokens.extend(quote! {
+                        {
+                            #(#setup_statements)*
+                            parent_node
+                        }
                     });
                 }
-
-                tokens.extend(quote! {
-                    {
-                        #(#setup_statements)*
-                        parent_node
-                    }
-                });
             }
         }
     }

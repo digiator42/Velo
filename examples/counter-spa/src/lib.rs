@@ -3,6 +3,8 @@ use dom::{mount_to_id, DomNode};
 use r#macro::view;
 use router::{link, Router};
 use wasm_bindgen::prelude::*;
+mod components;
+use components::UserCard;
 
 fn home_page() -> DomNode {
     view! {
@@ -13,13 +15,50 @@ fn home_page() -> DomNode {
     }
 }
 
+// fn profile_page() -> DomNode {
+//     let user_name = Signal::new("Guest".to_string());
+
+//     view! {
+//         <div class="page profile">
+//             <h1>"User Profile"</h1>
+//             <UserCard name={ user_name.clone() } role={ "Visitor".to_string() } />
+//             <button on:click={ move |_| { user_name.set("Alice".to_string()) } }>
+//                 "Change Name"
+//             </button>
+//         </div>
+//     }
+// }
+
 fn profile_page() -> DomNode {
     let user_name = Signal::new("Guest".to_string());
+    let show_card = Signal::new(false);
+
+    let user_name_click = user_name.clone();
+    let toggle_card = show_card.clone();
 
     view! {
         <div class="page profile">
-            <h1>"User Profile"</h1>
-            <p>"Hello, " { user_name.get() } "!"</p>
+            <h1>"User Account Settings"</h1>
+
+            <button on:click={ move |_| { toggle_card.set(!toggle_card.get()); } }>
+                "Toggle User Preview Card"
+            </button>
+
+            <button on:click={ move |_| { user_name_click.set("Alice".to_string()); } }>
+                "Change Name"
+            </button>
+
+            <hr />
+
+            {
+                move || {
+                    if show_card.get() {
+                        return view! { <UserCard name={ user_name.clone() } role={ "Admin".to_string() } /> };
+                    } else {
+                        dom::DomNode::text("")
+                    }
+                }
+            }
         </div>
     }
 }

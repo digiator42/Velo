@@ -149,7 +149,7 @@ impl DomNode {
         let mut f_clone = move || f();
 
         core::create_effect(move || {
-            let val = f_clone();
+            let val: R = f_clone();
             let resolved_node = val.render_dynamic();
 
             container_raw.set_text_content(None);
