@@ -1,0 +1,16 @@
+[package]
+name = "server-monitor-dashboard"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+core = { path = "../../crates/core" }
+dom = { path = "../../crates/dom" }
+macro = { path = "../../crates/macro" }
+router = { path = "../../crates/router" }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true }
+gloo-timers = "0.4"

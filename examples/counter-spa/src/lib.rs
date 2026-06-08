@@ -15,20 +15,6 @@ fn home_page() -> DomNode {
     }
 }
 
-// fn profile_page() -> DomNode {
-//     let user_name = Signal::new("Guest".to_string());
-
-//     view! {
-//         <div class="page profile">
-//             <h1>"User Profile"</h1>
-//             <UserCard name={ user_name.clone() } role={ "Visitor".to_string() } />
-//             <button on:click={ move |_| { user_name.set("Alice".to_string()) } }>
-//                 "Change Name"
-//             </button>
-//         </div>
-//     }
-// }
-
 fn profile_page() -> DomNode {
     let user_name = Signal::new("Guest".to_string());
     let show_card = Signal::new(false);
