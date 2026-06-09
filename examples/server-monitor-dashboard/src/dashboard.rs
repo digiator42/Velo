@@ -1,13 +1,11 @@
-use std::collections::HashMap;
 
 use crate::components::MetricCard;
 use dom::DomNode;
 use r#macro::view;
-use router::{Router, Route};
 use velo_core::Signal;
 use web_sys::js_sys;
 
-pub fn monitor_page(_: HashMap<String, String>) -> DomNode {
+pub fn monitor_page() -> DomNode {
 
     // High-Frequency Ticker Signals
     let cpu_load = Signal::new(42);

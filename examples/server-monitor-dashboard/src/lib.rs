@@ -3,6 +3,8 @@ use r#macro::view;
 use router::{FRouter, Link, Route, Router};
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use crate::dashboard::monitor_page;
+
 mod components;
 mod dashboard;
 
@@ -46,6 +48,27 @@ fn catch_all_fallback() -> DomNode {
 }
 
 pub fn run_app() {
+    let routes = vec![
+        Route {
+            path: "/",
+            component: home_page,
+        },
+        // Matches parameters /:id/ and /:new_id dynamically!
+        Route {
+            path: "/dashboard",
+            component: monitor_page,
+        },
+        Route {
+            path: "/dashboard/:id/live/:new_id",
+            component: monitor,
+        },
+        // Catch all wildcard rule handles anything remaining safely
+        Route {
+            path: "/**",
+            component: catch_all_fallback,
+        },
+    ];
+
     let app_shell = view! {
         <div id="app-container">
             <nav class="navbar">
@@ -53,12 +76,7 @@ pub fn run_app() {
                 <Link to="/dashboard" label="Dashboard System" />
             </nav>
             <hr />
-            <Router routes={ vec![
-                // Matches parameters /:id/ and /:new_id dynamically!
-                Route { path: "/dashboard/:id/live/:new_id", component: monitor },
-                // Catch all wildcard rule handles anything remaining safely
-                Route { path: "/**", component: catch_all_fallback }
-            ] } />
+            <Router routes={ routes } />
         </div>
     };
 
