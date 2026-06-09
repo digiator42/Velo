@@ -1,4 +1,4 @@
-use core::Signal;
+use velo_core::Signal;
 
 use dom::DomNode;
 use r#macro::view;

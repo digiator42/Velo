@@ -1,4 +1,4 @@
-use core::{create_effect, Signal};
+use velo_core::{create_effect, Signal};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, Node, Text};
@@ -51,6 +51,11 @@ impl DomNode {
         Self {
             raw_node: txt.into(),
         }
+    }
+
+    /// Sets the text content of this node directly, replacing any existing children.
+    pub fn set_text(&self, content: &str) {
+        self.raw_node.set_text_content(Some(content));
     }
 
     /// Creates a modern, fine-grained reactive text node.
@@ -148,7 +153,7 @@ impl DomNode {
         let container_raw = container.clone();
         let mut f_clone = move || f();
 
-        core::create_effect(move || {
+        velo_core::create_effect(move || {
             let val: R = f_clone();
             let resolved_node = val.render_dynamic();
 

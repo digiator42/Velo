@@ -162,8 +162,13 @@ impl ToTokens for VNode {
                         args.push(quote! { #val });
                     }
 
-                    // Optional: If your component accepts nested children inside its tags,
-                    // you can automatically append them as a vector or an extra trailing parameter!
+                    // If the tag has children, compile them into a nested view block
+                    // and pass it as the trailing parameter!
+                    if !children.is_empty() {
+                        args.push(quote! {
+                            view! { #(#children)* }
+                        });
+                    }
 
                     tokens.extend(quote! {
                         #component_ident(#(#args),*)
@@ -216,6 +221,13 @@ impl ToTokens for VNode {
 /// The primary compiler entrypoint for the view custom DSL syntax
 #[proc_macro]
 pub fn view(input: TokenStream) -> TokenStream {
-    let parsed_root = parse_macro_input!(input as VNode);
-    TokenStream::from(parsed_root.to_token_stream())
+    // By using syn::parse instead of parse_macro_input!, we can catch the error
+    // manually and turn it into a bulletproof compile error stream.
+    match syn::parse::<VNode>(input) {
+        Ok(parsed_root) => TokenStream::from(parsed_root.to_token_stream()),
+        Err(err) => {
+            // This is completely standalone and won't get tripped up by your crate name!
+            TokenStream::from(err.to_compile_error())
+        }
+    }
 }

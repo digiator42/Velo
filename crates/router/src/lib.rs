@@ -1,9 +1,9 @@
+use dom::{document, DomNode};
 use std::cell::RefCell;
 use std::rc::Rc;
+use velo_core::{create_effect, Signal};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use core::{create_effect, Signal};
-use dom::{document, DomNode};
 
 thread_local! {
     // Global tracking signal for the current URL path string
@@ -19,8 +19,10 @@ thread_local! {
 /// Programmatically updates the browser URL and alerts the active Route Signal
 pub fn navigate_to(path: &str) {
     let window = web_sys::window().expect("Velo Router: No window found");
-    let history = window.history().expect("Velo Router: Accessing history failed");
-    
+    let history = window
+        .history()
+        .expect("Velo Router: Accessing history failed");
+
     // Update browser history state without refreshing the page
     history
         .push_state_with_url(&JsValue::NULL, "", Some(path))
@@ -35,14 +37,10 @@ pub fn navigate_to(path: &str) {
 /// Initializes global browser listeners to intercept browser back/forward buttons
 pub fn init_router_listeners() {
     let window = web_sys::window().expect("Velo Router: No window found");
-    
+
     let on_popstate = Closure::wrap(Box::new(move |_e: web_sys::PopStateEvent| {
-        let current_path_str = web_sys::window()
-            .unwrap()
-            .location()
-            .pathname()
-            .unwrap();
-        
+        let current_path_str = web_sys::window().unwrap().location().pathname().unwrap();
+
         CURRENT_PATH.with(|path_signal| {
             path_signal.set(current_path_str);
         });
@@ -51,7 +49,7 @@ pub fn init_router_listeners() {
     window
         .add_event_listener_with_callback("popstate", on_popstate.as_ref().unchecked_ref())
         .expect("Velo Router: Failed to bind popstate listener");
-    
+
     on_popstate.forget();
 }
 
@@ -69,28 +67,28 @@ impl Router {
         // Create a persistent placeholder element where pages dynamically swap out
         let view_wrapper = DomNode::element("div");
         view_wrapper.reactive_attribute("class", || "velo-router-viewport".to_string());
-        
+
         let current_child: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
-        
+
         let wrapper_raw = view_wrapper.raw_node.clone();
         let child_tracker = Rc::clone(&current_child);
 
         // This effect executes SURGICALLY only when the URL changes
         create_effect(move || {
             let path = CURRENT_PATH.with(|p| p.get());
-            
+
             // Clean up previous view node from browser memory layout tree if it exists
             if let Some(old_node) = child_tracker.borrow().as_ref() {
                 let _ = wrapper_raw.remove_child(&old_node.raw_node);
             }
-            
+
             // Build the new page node matched via the developer's closure
             let new_page_node = routes_matcher(&path);
-            
+
             wrapper_raw
                 .append_child(&new_page_node.raw_node)
                 .expect("Velo Router: Failed to append target route content");
-            
+
             // Store reference to clean up on the next navigation cycle
             *child_tracker.borrow_mut() = Some(new_page_node);
         });
@@ -99,14 +97,17 @@ impl Router {
     }
 }
 
-/// Ergonomic Link component that stops native browser refreshes
-pub fn link(to: &'static str, label: &str) -> DomNode {
+/// Ergonomic Link component that allows clean macro nesting: <Link to="...">Children</Link>
+#[allow(non_snake_case)]
+pub fn Link(to: &'static str, label: &'static str) -> DomNode {
     let anchor = DomNode::element("a");
     anchor.reactive_attribute("href", move || to.to_string());
-    anchor.append(&DomNode::text(label));
-    
+
+    // Create a text node from your implementation and attach it
+    let text_content = DomNode::text(label);
+    anchor.append(&text_content);
+
     anchor.on("click", move |event| {
-        // Stop the browser from attempting a hard server fetch reload loop
         event.prevent_default();
         navigate_to(to);
     });

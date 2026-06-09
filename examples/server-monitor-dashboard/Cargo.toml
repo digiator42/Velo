@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-core = { path = "../../crates/core" }
+velo_core = { path = "../../crates/core" }
 dom = { path = "../../crates/dom" }
 macro = { path = "../../crates/macro" }
 router = { path = "../../crates/router" }

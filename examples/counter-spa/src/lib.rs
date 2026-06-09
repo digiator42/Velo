@@ -1,7 +1,7 @@
-use core::Signal;
 use dom::{mount_to_id, DomNode};
 use r#macro::view;
-use router::{link, Router};
+use router::{Link, Router};
+use velo_core::Signal;
 use wasm_bindgen::prelude::*;
 mod components;
 use components::UserCard;
@@ -82,23 +82,21 @@ pub fn run_app() {
     let app_shell = view! {
         <div id="app-container">
             <nav class="navbar">
-                { link("/", "Home Navigation") }
-                " | "
-                { link("/dashboard", "Dashboard System") }
-                " | "
-                { link("/profile", "Profile Management") }
+                <Link to="/" label="Home Navigation" />
+                <Link to="/dashboard" label="Dashboard System" />
+                <Link to="/profile" label="Profile Management" />
             </nav>
-            <hr />
-            {
-                Router::new(|path| {
-                    match path {
-                        "/" => home_page(),
-                        "/dashboard" => dashboard_page(),
-                        "/profile" => profile_page(),
-                        _ => view! { <h1>"404 - Engine Page Not Found"</h1> }
-                    }
-                })
-            }
+            // <hr />
+            // {
+            //     Router::new(|path| {
+            //         match path {
+            //             "/" => home_page(),
+            //             "/dashboard" => dashboard_page(),
+            //             "/profile" => profile_page(),
+            //             _ => view! { <h1>"404 - Engine Page Not Found"</h1> }
+            //         }
+            //     })
+            // }
         </div>
     };
 

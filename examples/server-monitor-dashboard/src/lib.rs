@@ -1,8 +1,8 @@
-use core::Signal;
+use velo_core::Signal;
 
 use dom::{DomNode, mount_to_id};
 use r#macro::view;
-use router::{Router, link};
+use router::{Link, Router};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::dashboard::monitor_page;
@@ -28,9 +28,8 @@ pub fn run_app() {
     let app_shell = view! {
         <div id="app-container">
             <nav class="navbar">
-                { link("/", "Home Navigation") }
-                " | "
-                { link("/dashboard", "Dashboard System") }
+                <Link to="/" label="Home Navigation" />
+                <Link to="/dashboard" label="Dashboard System" />
             </nav>
             <hr />
             {
