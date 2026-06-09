@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use crate::components::MetricCard;
-use velo_core::Signal;
 use dom::DomNode;
 use r#macro::view;
+use router::{Router, Route};
+use velo_core::Signal;
 use web_sys::js_sys;
 
-pub fn monitor_page() -> DomNode {
+pub fn monitor_page(_: HashMap<String, String>) -> DomNode {
+
     // High-Frequency Ticker Signals
     let cpu_load = Signal::new(42);
     let memory_usage = Signal::new(68);
@@ -43,7 +47,7 @@ pub fn monitor_page() -> DomNode {
 
         let start_time = js_sys::Date::now();
 
-        for _ in 0..1000{
+        for _ in 0..1000 {
             c_cpu.set(cpu_delta);
             c_mem.set(mem_delta);
             c_conn.set(conn_delta);
@@ -103,8 +107,8 @@ pub fn monitor_page() -> DomNode {
 
             <div>
                 <h2>"Performance Inspection"</h2>
-                <p>"The elapsed time for the 1000 rapid state updates in the background loop is: " 
-                <span class="elapsed-time">{ elapsed_time.get() }</span> " milliseconds, with interval: " 
+                <p>"The elapsed time for the 1000 rapid state updates in the background loop is: "
+                <span class="elapsed-time">{ elapsed_time.get() }</span> " milliseconds, with interval: "
                 <span class="interval">{ c_interval.get() }</span> " ms."</p>
             </div>
 

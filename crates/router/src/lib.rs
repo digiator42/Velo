@@ -1,5 +1,6 @@
 use dom::{document, DomNode};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use velo_core::{create_effect, Signal};
 use wasm_bindgen::prelude::*;
@@ -53,6 +54,57 @@ pub fn init_router_listeners() {
     on_popstate.forget();
 }
 
+fn match_route_patterns(template: &str, incoming_url: &str) -> Option<HashMap<String, String>> {
+    // Handle the absolute catch-all wildcard rule immediately
+    if template == "/**" {
+        return Some(HashMap::new());
+    }
+
+    // Split paths into clean structural token segments, dropping empty padding
+    let t_segments: Vec<&str> = template.split('/').filter(|s| !s.is_empty()).collect();
+    let u_segments: Vec<&str> = incoming_url.split('/').filter(|s| !s.is_empty()).collect();
+
+    // Check for standard wildcard endings at a template level
+    let has_wildcard = template.ends_with("/**");
+
+    if !has_wildcard && t_segments.len() != u_segments.len() {
+        return None;
+    }
+
+    let mut extracted_params = HashMap::new();
+
+    for (i, t_seg) in t_segments.iter().enumerate() {
+        if *t_seg == "**" {
+            // Found a trailing wildcard! Everything remaining matches perfectly.
+            return Some(extracted_params);
+        }
+
+        if t_seg.starts_with(':') {
+            // 🚀 FOUND A PARAMETER METRIC SEGMENT KEY!
+            if let Some(u_seg) = u_segments.get(i) {
+                let key = t_seg[1..].to_string(); // Strip the leading colon ":"
+                let value = u_seg.to_string();
+                extracted_params.insert(key, value);
+            } else {
+                return None;
+            }
+        } else {
+            // Static segment string match checkpoint (e.g., "dashboard" == "dashboard")
+            match u_segments.get(i) {
+                Some(u_seg) if u_seg == t_seg => continue,
+                _ => return None,
+            }
+        }
+    }
+
+    Some(extracted_params)
+}
+
+thread_local! {
+    // Stores the active route parameters globally
+    static ACTIVE_PARAMS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 pub struct Route {
     pub path: &'static str,
     pub component: fn() -> DomNode,
@@ -100,45 +152,74 @@ impl FRouter {
 
         view_wrapper
     }
+
+    /// Retrieve a route parameter by key from anywhere in the application
+    pub fn param(key: &str) -> Option<String> {
+        ACTIVE_PARAMS.with(|p| p.borrow().get(key).cloned())
+    }
+
+    /// Helper to grab all parameters if needed
+    pub fn params() -> HashMap<String, String> {
+        ACTIVE_PARAMS.with(|p| p.borrow().clone())
+    }
 }
 
 // Ergonomic Router component for clean macro nesting: <Router>{ |path| ... }</Router>
 #[allow(non_snake_case)]
 pub fn Router(routes: Vec<Route>) -> DomNode {
-    init_router_listeners();
+    static mut LISTENERS_INITIALIZED: bool = false;
+    unsafe {
+        if !LISTENERS_INITIALIZED {
+            init_router_listeners();
+            LISTENERS_INITIALIZED = true;
+        }
+    }
 
     let view_wrapper = DomNode::element("div");
     view_wrapper.reactive_attribute("class", || "velo-router-viewport".to_string());
 
-    // Initialize as a clean Option<DomNode> using an explicit type annotation!
     let current_child: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
-    
     let wrapper_raw = view_wrapper.raw_node.clone();
     let child_tracker = Rc::clone(&current_child);
 
     create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
 
-        // Now child_tracker.borrow().as_ref() correctly yields a &DomNode!
         if let Some(old_node) = child_tracker.borrow().as_ref() {
             let _ = wrapper_raw.remove_child(&old_node.raw_node);
         }
 
-        let matched_component = routes
-            .iter()
-            .find(|r| r.path == current_path)
-            .map(|r| (r.component)())
-            .unwrap_or_else(|| {
+        let mut params_payload = HashMap::new();
+
+        let matched_route = routes.iter().find(|r| {
+            if let Some(parsed_map) = match_route_patterns(r.path, &current_path) {
+                params_payload = parsed_map;
+                true
+            } else {
+                false
+            }
+        });
+
+        // --- INTERCEPTION LAYER ---
+        // Store the parsed parameters globally BEFORE calling the component factory
+        ACTIVE_PARAMS.with(|p| {
+            *p.borrow_mut() = params_payload;
+        });
+
+        let matched_component = match matched_route {
+            // Your component functions no longer need to accept parameters!
+            Some(route) => (route.component)(),
+            None => {
                 let fallback = DomNode::element("h1");
                 fallback.append(&DomNode::text("404 - Page Not Found"));
                 fallback
-            });
+            }
+        };
 
         wrapper_raw
             .append_child(&matched_component.raw_node)
             .expect("Velo Router: Failed to append target route content");
 
-        // Types match perfectly here now!
         *child_tracker.borrow_mut() = Some(matched_component);
     });
 
