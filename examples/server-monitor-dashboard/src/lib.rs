@@ -1,7 +1,7 @@
-use r#velo_macro::view;
 use velo_dom::{DomNode, mount_to_id};
+use r#velo_macro::view;
 use velo_router::{FRouter, Link, Route, Router};
-use wasm_bindgen::{JsCast, prelude::wasm_bindgen};
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::dashboard::monitor_page;
 

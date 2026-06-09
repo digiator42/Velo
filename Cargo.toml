@@ -4,6 +4,7 @@ members = [
     "crates/dom",
     "crates/macro",
     "crates/router",
+    "crates/velo",
     "examples/counter-spa", "examples/server-monitor-dashboard",
 ]
 resolver = "2"

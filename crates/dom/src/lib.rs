@@ -1,7 +1,7 @@
-use velo_core::{create_effect, Signal};
+use velo_core::{create_effect};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{Document, Element, Node, Text};
+use web_sys::{Document, Element, Node};
 
 /// Helper to easily access the global window document instance
 pub fn document() -> Document {

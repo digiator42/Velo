@@ -3,7 +3,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{parse_macro_input, Expr, LitStr, Token};
+use syn::{Expr, LitStr, Token};
 
 /// Represents the types of UI components parsed inside our view macro
 enum VNode {
