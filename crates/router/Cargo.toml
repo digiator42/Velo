@@ -1,19 +1,13 @@
 [package]
-name = "router"
+name = "velo_router"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 velo_core = { path = "../core" }
-dom = { path = "../dom" }
+velo_dom = { path = "../dom" }
 wasm-bindgen = { workspace = true }
 
 [dependencies.web-sys]
 workspace = true
-features = [
-    "Window",
-    "History",
-    "Location",
-    "Event",
-    "PopStateEvent"
-]
+features = ["Window", "History", "Location", "Event", "PopStateEvent"]

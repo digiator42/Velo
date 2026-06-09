@@ -1,12 +1,10 @@
-
 use crate::components::MetricCard;
-use dom::DomNode;
-use r#macro::view;
 use velo_core::Signal;
+use velo_dom::DomNode;
+use r#velo_macro::view;
 use web_sys::js_sys;
 
 pub fn monitor_page() -> DomNode {
-
     // High-Frequency Ticker Signals
     let cpu_load = Signal::new(42);
     let memory_usage = Signal::new(68);

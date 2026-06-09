@@ -1,8 +1,7 @@
 use velo_core::Signal;
 
-use dom::DomNode;
-use r#macro::view;
-
+use r#velo_macro::view;
+use velo_dom::DomNode;
 
 #[allow(non_snake_case)]
 pub fn UserCard(name: Signal<String>, role: String) -> DomNode {

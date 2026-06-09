@@ -124,7 +124,7 @@ impl ToTokens for VNode {
         match self {
             VNode::StaticText(txt) => {
                 tokens.extend(quote! {
-                    dom::DomNode::text(#txt)
+                    velo_dom::DomNode::text(#txt)
                 });
             }
             VNode::ReactiveExpression(expr) => {
@@ -134,12 +134,12 @@ impl ToTokens for VNode {
                 if expr_string.starts_with("move") || expr_string.starts_with("||") {
                     // If the developer already provided a closure, don't double-wrap it!
                     tokens.extend(quote! {
-                        dom::DomNode::render_expression(#expr)
+                        velo_dom::DomNode::render_expression(#expr)
                     });
                 } else {
                     // If it's a simple variable or function call, wrap it in a closure for reactive tracking
                     tokens.extend(quote! {
-                        dom::DomNode::render_expression(move || #expr)
+                        velo_dom::DomNode::render_expression(move || #expr)
                     });
                 }
             }
@@ -178,7 +178,7 @@ impl ToTokens for VNode {
 
                     // Code block generation steps
                     setup_statements.push(quote! {
-                        let parent_node = dom::DomNode::element(#tag_name);
+                        let parent_node = velo_dom::DomNode::element(#tag_name);
                     });
 
                     // Attach attributes and reactive click hooks cleanly

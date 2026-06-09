@@ -1,8 +1,8 @@
-use dom::{document, DomNode};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use velo_core::{create_effect, Signal};
+use velo_dom::{document, DomNode};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 

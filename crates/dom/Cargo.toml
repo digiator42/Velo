@@ -1,5 +1,5 @@
 [package]
-name = "dom"
+name = "velo_dom"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,6 +14,7 @@ features = [
     "Document",
     "Element",
     "HtmlElement",
+    "HtmlInputElement",
     "Node",
     "Text",
     "Window",

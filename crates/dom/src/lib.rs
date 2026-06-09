@@ -30,6 +30,7 @@ impl<T: std::fmt::Display + 'static> RenderDynamic for T {
 }
 
 /// A wrapper around a real native browser DOM element
+#[derive(Clone)]
 pub struct DomNode {
     pub raw_node: Node,
 }
