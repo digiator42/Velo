@@ -53,10 +53,15 @@ pub fn init_router_listeners() {
     on_popstate.forget();
 }
 
-/// Router structural component. Listens to path changes and morphs the core view.
-pub struct Router;
+pub struct Route {
+    pub path: &'static str,
+    pub component: fn() -> DomNode,
+}
 
-impl Router {
+/// Router structural component. Listens to path changes and morphs the core view.
+pub struct FRouter;
+
+impl FRouter {
     pub fn new<F>(mut routes_matcher: F) -> DomNode
     where
         F: FnMut(&str) -> DomNode + 'static,
@@ -95,6 +100,49 @@ impl Router {
 
         view_wrapper
     }
+}
+
+// Ergonomic Router component for clean macro nesting: <Router>{ |path| ... }</Router>
+#[allow(non_snake_case)]
+pub fn Router(routes: Vec<Route>) -> DomNode {
+    init_router_listeners();
+
+    let view_wrapper = DomNode::element("div");
+    view_wrapper.reactive_attribute("class", || "velo-router-viewport".to_string());
+
+    // Initialize as a clean Option<DomNode> using an explicit type annotation!
+    let current_child: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
+    
+    let wrapper_raw = view_wrapper.raw_node.clone();
+    let child_tracker = Rc::clone(&current_child);
+
+    create_effect(move || {
+        let current_path = CURRENT_PATH.with(|p| p.get());
+
+        // Now child_tracker.borrow().as_ref() correctly yields a &DomNode!
+        if let Some(old_node) = child_tracker.borrow().as_ref() {
+            let _ = wrapper_raw.remove_child(&old_node.raw_node);
+        }
+
+        let matched_component = routes
+            .iter()
+            .find(|r| r.path == current_path)
+            .map(|r| (r.component)())
+            .unwrap_or_else(|| {
+                let fallback = DomNode::element("h1");
+                fallback.append(&DomNode::text("404 - Page Not Found"));
+                fallback
+            });
+
+        wrapper_raw
+            .append_child(&matched_component.raw_node)
+            .expect("Velo Router: Failed to append target route content");
+
+        // Types match perfectly here now!
+        *child_tracker.borrow_mut() = Some(matched_component);
+    });
+
+    view_wrapper
 }
 
 /// Ergonomic Link component that allows clean macro nesting: <Link to="...">Children</Link>

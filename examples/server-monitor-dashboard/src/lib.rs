@@ -2,7 +2,7 @@ use velo_core::Signal;
 
 use dom::{DomNode, mount_to_id};
 use r#macro::view;
-use router::{Link, Router};
+use router::{FRouter, Link, Route, Router};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::dashboard::monitor_page;
@@ -32,15 +32,12 @@ pub fn run_app() {
                 <Link to="/dashboard" label="Dashboard System" />
             </nav>
             <hr />
-            {
-                Router::new(|path| {
-                    match path {
-                        "/" => home_page(),
-                        "/dashboard" => monitor_page(),
-                        _ => view! { <h1>"404 - Engine Page Not Found"</h1> }
-                    }
-                })
-            }
+            <Router routes={
+                vec![
+                    Route { path: "/", component: home_page },
+                    Route { path: "/dashboard", component: monitor_page },
+                ]
+             } />
         </div>
     };
 
