@@ -5,7 +5,6 @@ use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{Expr, LitStr, Token};
 
-/// Represents the types of UI components parsed inside our view macro
 enum VNode {
     Element {
         tag_name: String,
@@ -14,9 +13,13 @@ enum VNode {
     },
     StaticText(String),
     ReactiveExpression(Expr),
+    ForLoop {
+        pat: syn::Pat,
+        expr: Expr,
+        body: Vec<VNode>,
+    },
 }
 
-/// Represents attributes like class="btn" or reactive event handlers like on:click={...}
 struct VAttr {
     key: String,
     value: Expr,
@@ -26,12 +29,54 @@ struct VAttr {
 
 impl Parse for VNode {
     fn parse(input: ParseStream) -> Result<Self> {
-        // Handle expression blocks e.g., { count } or { count.get() }
+        // Handle expression blocks e.g., { count } or complex conditional blocks
         if input.peek(syn::token::Brace) {
+            let fork = input.fork(); // Create a lookahead fork to test loop vs expression blocks safely
             let content;
-            syn::braced!(content in input);
-            let expr: Expr = content.parse()?;
-            return Ok(VNode::ReactiveExpression(expr));
+            syn::braced!(content in fork);
+
+            // 🔍 1. Check for inline loop syntax
+            if content.peek(Token![for]) {
+                let content;
+                syn::braced!(content in input); // Advance actual stream pointer
+                content.parse::<Token![for]>()?;
+                let pat = syn::Pat::parse_single(&content)?;
+                content.parse::<Token![in]>()?;
+                let expr = content.parse::<Expr>()?;
+
+                let loop_body_content;
+                syn::braced!(loop_body_content in content);
+
+                let mut body = Vec::new();
+                while !loop_body_content.is_empty() {
+                    body.push(loop_body_content.parse::<VNode>()?);
+                }
+
+                return Ok(VNode::ForLoop { pat, expr, body });
+            }
+
+            // Try to parse as a simple expression first, fallback to a full statement block expression!
+            let content;
+            let braced_token = syn::braced!(content in input); // Advance actual stream pointer
+
+            if let Ok(expr) = content.parse::<Expr>() {
+                if content.is_empty() {
+                    return Ok(VNode::ReactiveExpression(expr));
+                }
+            }
+
+            // If it contains statements or semicolons, parse it as a full block statement expression!
+            let block = content.call(syn::Block::parse_within)?;
+            let expr_block = Expr::Block(syn::ExprBlock {
+                attrs: vec![],
+                label: None,
+                block: syn::Block {
+                    brace_token: braced_token,
+                    stmts: block,
+                },
+            });
+
+            return Ok(VNode::ReactiveExpression(expr_block));
         }
 
         // Handle text literals e.g., "Click me"
@@ -46,11 +91,9 @@ impl Parse for VNode {
         let tag_name = tag_ident.to_string();
 
         let mut attributes = Vec::new();
-        // Parse attributes until we hit tag close sequence
         while !input.peek(Token![>]) && !input.peek(Token![/]) {
             let mut key = input.parse::<syn::Ident>()?.to_string();
 
-            // Handle specialized event namespace syntax (e.g., on:click)
             if input.peek(Token![:]) {
                 input.parse::<Token![:]>()?;
                 let sub_key = input.parse::<syn::Ident>()?.to_string();
@@ -59,7 +102,6 @@ impl Parse for VNode {
 
             input.parse::<Token![=]>()?;
 
-            // Parse attribute value expression wrapped in brackets or string
             let value: Expr = if input.peek(syn::token::Brace) {
                 let content;
                 syn::braced!(content in input);
@@ -75,7 +117,6 @@ impl Parse for VNode {
             attributes.push(VAttr { key, value });
         }
 
-        // Check for self-closing tag context <img />
         if input.peek(Token![/]) {
             input.parse::<Token![/]>()?;
             input.parse::<Token![>]>()?;
@@ -88,13 +129,11 @@ impl Parse for VNode {
 
         input.parse::<Token![>]>()?;
 
-        // Parse internal nested children tags recursively
         let mut children = Vec::new();
         while !input.peek(Token![<]) || !input.peek2(Token![/]) {
             children.push(input.parse::<VNode>()?);
         }
 
-        // Parse ending verification tag matching </div>
         input.parse::<Token![<]>()?;
         input.parse::<Token![/]>()?;
         let end_tag: syn::Ident = input.parse()?;
@@ -117,7 +156,7 @@ impl Parse for VNode {
     }
 }
 
-// --- Code Generation / Deserialization Blueprint ---
+// --- Code Generation Engine ---
 
 impl ToTokens for VNode {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
@@ -128,20 +167,36 @@ impl ToTokens for VNode {
                 });
             }
             VNode::ReactiveExpression(expr) => {
-                // Convert the expression to a string to check if the user passed a manual closure block
                 let expr_string = quote! { #expr }.to_string();
 
                 if expr_string.starts_with("move") || expr_string.starts_with("||") {
-                    // If the developer already provided a closure, don't double-wrap it!
                     tokens.extend(quote! {
                         velo_dom::DomNode::render_expression(#expr)
                     });
                 } else {
-                    // If it's a simple variable or function call, wrap it in a closure for reactive tracking
                     tokens.extend(quote! {
                         velo_dom::DomNode::render_expression(move || #expr)
                     });
                 }
+            }
+            VNode::ForLoop { pat, expr, body } => {
+                let compiled_body_nodes = body.iter().map(|child| {
+                    quote! { #child }
+                });
+
+                tokens.extend(quote! {
+                    {
+                        let loop_fragment = velo_dom::DomNode::element("div");
+                        loop_fragment.reactive_attribute("class", || "contents".into());
+
+                        for #pat in #expr {
+                            #(
+                                loop_fragment.append(&#compiled_body_nodes); // 🚀 Semicolon is safely tucked inside the repetition!
+                            )*
+                        }
+                        loop_fragment
+                    }
+                });
             }
             VNode::Element {
                 tag_name,
@@ -150,20 +205,15 @@ impl ToTokens for VNode {
             } => {
                 let first_char = tag_name.chars().next().unwrap_or(' ');
 
-                //COMPONENT DETECTION ENGINE
                 if first_char.is_uppercase() {
-                    // Turn the string "UserProfile" into a valid compiler function Identifier token
                     let component_ident = syn::Ident::new(tag_name, proc_macro2::Span::call_site());
 
-                    // Map the macro attributes into normal function arguments
                     let mut args = Vec::new();
                     for attr in attributes {
                         let val = &attr.value;
                         args.push(quote! { #val });
                     }
 
-                    // If the tag has children, compile them into a nested view block
-                    // and pass it as the trailing parameter!
                     if !children.is_empty() {
                         args.push(quote! {
                             view! { #(#children)* }
@@ -176,12 +226,10 @@ impl ToTokens for VNode {
                 } else {
                     let mut setup_statements = Vec::new();
 
-                    // Code block generation steps
                     setup_statements.push(quote! {
                         let parent_node = velo_dom::DomNode::element(#tag_name);
                     });
 
-                    // Attach attributes and reactive click hooks cleanly
                     for attr in attributes {
                         let key = &attr.key;
                         let val = &attr.value;
@@ -192,14 +240,12 @@ impl ToTokens for VNode {
                                 parent_node.on(#event_type, #val);
                             });
                         } else {
-                            // Dynamically update the node attribute if specified as raw code block variables
                             setup_statements.push(quote! {
                                 parent_node.reactive_attribute(#key, move || format!("{}", #val));
                             });
                         }
                     }
 
-                    // Recursively append compiled child structures
                     for child in children {
                         setup_statements.push(quote! {
                             parent_node.append(&#child);
@@ -218,16 +264,10 @@ impl ToTokens for VNode {
     }
 }
 
-/// The primary compiler entrypoint for the view custom DSL syntax
 #[proc_macro]
 pub fn view(input: TokenStream) -> TokenStream {
-    // By using syn::parse instead of parse_macro_input!, we can catch the error
-    // manually and turn it into a bulletproof compile error stream.
     match syn::parse::<VNode>(input) {
         Ok(parsed_root) => TokenStream::from(parsed_root.to_token_stream()),
-        Err(err) => {
-            // This is completely standalone and won't get tripped up by your crate name!
-            TokenStream::from(err.to_compile_error())
-        }
+        Err(err) => TokenStream::from(err.to_compile_error()),
     }
 }
