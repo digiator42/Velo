@@ -15,9 +15,13 @@ features = [
     "Element",
     "HtmlElement",
     "HtmlInputElement",
+    "HtmlSelectElement",
+    "DocumentFragment",
     "Node",
     "Text",
     "Window",
     "Event",
     "MouseEvent",
+    "console",
+    "Storage",
 ]

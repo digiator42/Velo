@@ -15,19 +15,45 @@ pub trait RenderDynamic {
     fn render_dynamic(self) -> DomNode;
 }
 
-// Case A: The expression inside the braces returns a DomNode (like a sub-component)
+// Case A: The expression inside the braces returns a single DomNode
 impl RenderDynamic for DomNode {
     fn render_dynamic(self) -> DomNode {
         self
     }
 }
 
-// Case B: The expression returns something that can be displayed (like an i32 or String)
-impl<T: std::fmt::Display + 'static> RenderDynamic for T {
+// Case B: The expression returns a collected Vector of nodes from an iterator
+impl RenderDynamic for Vec<DomNode> {
     fn render_dynamic(self) -> DomNode {
-        DomNode::text(&format!("{}", self))
+        let frag = DomNode::fragment();
+        for node in self {
+            frag.append(&node);
+        }
+        frag
     }
 }
+
+// Case C: Macro to implement RenderDynamic explicitly for common types.
+// This satisfies the compiler completely because Vec<DomNode> is none of these!
+macro_rules! impl_render_for_primitives {
+    ($($t:ty),*) => {
+        $(
+            impl RenderDynamic for $t {
+                fn render_dynamic(self) -> DomNode {
+                    DomNode::text(&format!("{}", self))
+                }
+            }
+        )*
+    };
+}
+
+// Tell the framework how to dynamically render text, numbers, and booleans inline
+impl_render_for_primitives!(
+    String, &str, bool,
+    i8, i16, i32, i64, i128, isize,
+    u8, u16, u32, u64, u128, usize,
+    f32, f64
+);
 
 /// A wrapper around a real native browser DOM element
 #[derive(Clone)]
@@ -43,6 +69,15 @@ impl DomNode {
             .expect("Velo: Failed to create DOM element tag");
         Self {
             raw_node: el.into(),
+        }
+    }
+
+    /// Creates an empty DocumentFragment node to act as a zero-wrapper container for siblings.
+    /// When appended to a parent, the browser automatically unpacks its children directly.
+    pub fn fragment() -> Self {
+        let frag = document().create_document_fragment();
+        Self {
+            raw_node: frag.into(),
         }
     }
 

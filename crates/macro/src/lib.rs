@@ -2,6 +2,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
+use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{Expr, LitStr, Token};
 
@@ -18,11 +19,25 @@ enum VNode {
         expr: Expr,
         body: Vec<VNode>,
     },
+    Fragment(Vec<VNode>), // hold sibling nodes without a wrapper tag!
 }
 
 struct VAttr {
     key: String,
     value: Expr,
+}
+
+impl Parse for VAttr {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let key_ident = input.call(syn::Ident::parse_any)?;
+
+        input.parse::<syn::Token![=]>()?;
+        let value = input.parse::<syn::Expr>()?;
+
+        let key = key_ident.to_string().trim_start_matches("r#").to_string();
+
+        Ok(VAttr { key, value })
+    }
 }
 
 // --- Parsing Implementation ---
@@ -35,7 +50,7 @@ impl Parse for VNode {
             let content;
             syn::braced!(content in fork);
 
-            // 🔍 1. Check for inline loop syntax
+            // Check for inline loop syntax
             if content.peek(Token![for]) {
                 let content;
                 syn::braced!(content in input); // Advance actual stream pointer
@@ -85,18 +100,41 @@ impl Parse for VNode {
             return Ok(VNode::StaticText(lit.value()));
         }
 
-        // Parse HTML Tags e.g., <div ...> ... </div>
+        // Parse HTML Tags or Fragments e.g., <div ...> ... </div> or <> ... </>
         input.parse::<Token![<]>()?;
-        let tag_ident: syn::Ident = input.parse()?;
-        let tag_name = tag_ident.to_string();
+
+        // Detect Fragment Syntax: Check if the token immediately following `<` is `>`
+        if input.peek(Token![>]) {
+            input.parse::<Token![>]>()?; // Consume the opening `>`
+
+            let mut children = Vec::new();
+            // Parse internal children until we see the start of the closing tag `</`
+            while !input.peek(Token![<]) || !input.peek2(Token![/]) {
+                children.push(input.parse::<VNode>()?);
+            }
+
+            // Consume the fragment closing syntax `</>`
+            input.parse::<Token![<]>()?;
+            input.parse::<Token![/]>()?;
+            input.parse::<Token![>]>()?;
+
+            return Ok(VNode::Fragment(children));
+        }
+
+        // Otherwise, proceed to parse standard HTML tag elements
+        let tag_ident = input.call(syn::Ident::parse_any)?; // 🚀 Use parse_any for custom component keywords too
+        let tag_name = tag_ident.to_string().trim_start_matches("r#").to_string();
 
         let mut attributes = Vec::new();
         while !input.peek(Token![>]) && !input.peek(Token![/]) {
-            let mut key = input.parse::<syn::Ident>()?.to_string();
+            // Use parse_any here to allow keywords like `type` or `for` as HTML attribute keys!
+            let key_ident = input.call(syn::Ident::parse_any)?;
+            let mut key = key_ident.to_string().trim_start_matches("r#").to_string();
 
             if input.peek(Token![:]) {
                 input.parse::<Token![:]>()?;
-                let sub_key = input.parse::<syn::Ident>()?.to_string();
+                let sub_key_ident = input.call(syn::Ident::parse_any)?;
+                let sub_key = sub_key_ident.to_string().trim_start_matches("r#").to_string();
                 key = format!("{}:{}", key, sub_key);
             }
 
@@ -136,8 +174,9 @@ impl Parse for VNode {
 
         input.parse::<Token![<]>()?;
         input.parse::<Token![/]>()?;
-        let end_tag: syn::Ident = input.parse()?;
-        if end_tag.to_string() != tag_name {
+        let end_tag = input.call(syn::Ident::parse_any)?;
+        let end_tag_name = end_tag.to_string().trim_start_matches("r#").to_string();
+        if end_tag_name != tag_name {
             return Err(syn::Error::new(
                 end_tag.span(),
                 format!(
@@ -191,10 +230,25 @@ impl ToTokens for VNode {
 
                         for #pat in #expr {
                             #(
-                                loop_fragment.append(&#compiled_body_nodes); // 🚀 Semicolon is safely tucked inside the repetition!
+                                loop_fragment.append(&#compiled_body_nodes);
                             )*
                         }
                         loop_fragment
+                    }
+                });
+            }
+            VNode::Fragment(children) => {
+                let compiled_children = children.iter().map(|child| {
+                    quote! { #child }
+                });
+
+                tokens.extend(quote! {
+                    {
+                        let fragment_node = velo_dom::DomNode::fragment();
+                        #(
+                            fragment_node.append(&#compiled_children);
+                        )*
+                        fragment_node
                     }
                 });
             }
