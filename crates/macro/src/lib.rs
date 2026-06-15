@@ -127,14 +127,20 @@ impl Parse for VNode {
 
         let mut attributes = Vec::new();
         while !input.peek(Token![>]) && !input.peek(Token![/]) {
-            // Use parse_any here to allow keywords like `type` or `for` as HTML attribute keys!
-            let key_ident = input.call(syn::Ident::parse_any)?;
-            let mut key = key_ident.to_string().trim_start_matches("r#").to_string();
+            // Use parse_any to allow parsing keywords if they show up as attribute parts
+            let mut key = input.call(syn::Ident::parse_any)?.to_string();
 
+            // Loop to catch hyphens (e.g., stroke-linecap or aria-describedby)
+            while input.peek(Token![-]) {
+                input.parse::<Token![-]>()?;
+                let next_part = input.call(syn::Ident::parse_any)?.to_string();
+                key = format!("{}-{}", key, next_part);
+            }
+
+            // Keep your existing namespace colon tracking (e.g., on:click)
             if input.peek(Token![:]) {
                 input.parse::<Token![:]>()?;
-                let sub_key_ident = input.call(syn::Ident::parse_any)?;
-                let sub_key = sub_key_ident.to_string().trim_start_matches("r#").to_string();
+                let sub_key = input.call(syn::Ident::parse_any)?.to_string();
                 key = format!("{}:{}", key, sub_key);
             }
 
@@ -293,6 +299,28 @@ impl ToTokens for VNode {
                             setup_statements.push(quote! {
                                 parent_node.on(#event_type, #val);
                             });
+                        } else if key == "disabled"
+                            || key == "checked"
+                            || key == "selected"
+                            || key == "readonly"
+                        {
+                            setup_statements.push(quote! {
+                            let p_node = parent_node.clone();
+                            // Use the top-level unified facade pathway
+                            velo::create_effect({
+                                let val_sig = move || #val;
+                                move || {
+                                    use wasm_bindgen::JsCast;
+                                    if let Ok(el) = p_node.raw_node.clone().dyn_into::<web_sys::Element>() {
+                                        if val_sig() {
+                                            let _ = el.set_attribute(#key, "");
+                                        } else {
+                                            let _ = el.remove_attribute(#key);
+                                        }
+                                    }
+                                }
+                            });
+                        });
                         } else {
                             setup_statements.push(quote! {
                                 parent_node.reactive_attribute(#key, move || format!("{}", #val));
