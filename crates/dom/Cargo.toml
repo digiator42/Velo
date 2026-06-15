@@ -35,5 +35,7 @@ features = [
     "History",            
     "Location",           
     "CssStyleDeclaration",
-    "DomTokenList"        
+    "DomTokenList",
+    "HtmlCollection",
+    "DomRect"     
 ]
