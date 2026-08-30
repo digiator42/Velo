@@ -1,7 +1,7 @@
 use r#velo_macro::view;
-use velo_router::{Link, Router};
-use velo_core::Signal;
+use velo_core::create_signal;
 use velo_dom::{mount_to_id, DomNode};
+use velo_router::Link;
 use wasm_bindgen::prelude::*;
 mod components;
 use components::UserCard;
@@ -16,30 +16,31 @@ fn home_page() -> DomNode {
 }
 
 fn profile_page() -> DomNode {
-    let user_name = Signal::new("Guest".to_string());
-    let show_card = Signal::new(false);
+    // Split read/write signals: clean, explicit ownership.
+    let (user_name, set_user_name) = create_signal("Guest".to_string());
+    let (show_card, set_show_card) = create_signal(false);
 
-    let user_name_click = user_name.clone();
-    let toggle_card = show_card.clone();
+    let show_toggle = show_card.clone();
 
     view! {
         <div class="page profile">
             <h1>"User Account Settings"</h1>
 
-            <button on:click={ move |_| { toggle_card.set(!toggle_card.get()); } }>
+            <button on:click={ move |_| { set_show_card.set(!show_toggle.get()); } }>
                 "Toggle User Preview Card"
             </button>
 
-            <button on:click={ move |_| { user_name_click.set("Alice".to_string()); } }>
+            <button on:click={ move |_| { set_user_name.set("Alice".to_string()); } }>
                 "Change Name"
             </button>
 
             <hr />
 
             {
+                // `user_name` is auto-unwrapped by the macro (no `.get()` needed)
                 move || {
                     if show_card.get() {
-                        return view! { <UserCard name={ user_name.clone() } role={ "Admin".to_string() } /> };
+                        view! { <UserCard name={ user_name.clone() } role={ "Admin".to_string() } /> }
                     } else {
                         velo_dom::DomNode::text("")
                     }
@@ -51,20 +52,16 @@ fn profile_page() -> DomNode {
 
 fn dashboard_page() -> DomNode {
     // Shared state managed cleanly in component scopes
-    let count = Signal::new(0);
-
-    let count_text = count.clone();
+    let (count, set_count) = create_signal(0);
+    let count_display = count.clone();
 
     view! {
         <div class="page dashboard">
             <h1>"Performance Analytics Dashboard"</h1>
             <div class="metric-box">
                 <h3>"Reactive Counter Tracker"</h3>
-                // Pass the dedicated text reader pointer here
-                <h2>{ count_text.get() }</h2>
-
-                // Pass the dedicated mutation pointer here and use a clear statement block
-                <button on:click={ move |_| { count.set(count.get() + 1); } }>
+                <h2>{ count_display }</h2>
+                <button on:click={ move |_| { set_count.set(count.get() + 1); } }>
                     "Surgical Increment"
                 </button>
             </div>
@@ -86,17 +83,6 @@ pub fn run_app() {
                 <Link to="/dashboard" label="Dashboard System" />
                 <Link to="/profile" label="Profile Management" />
             </nav>
-            // <hr />
-            // {
-            //     Router::new(|path| {
-            //         match path {
-            //             "/" => home_page(),
-            //             "/dashboard" => dashboard_page(),
-            //             "/profile" => profile_page(),
-            //             _ => view! { <h1>"404 - Engine Page Not Found"</h1> }
-            //         }
-            //     })
-            // }
         </div>
     };
 

@@ -7,29 +7,38 @@ pub use velo_router as router;
 
 // 2. Re-export the foundational items at the root level of the crate.
 //    This fixes the macro generation path error for `velo::create_effect`.
-pub use velo_core::create_effect;
-pub use velo_macro::view;
+pub use velo_core::{
+    create_effect, create_memo, create_signal, provide_context, use_context, with_context,
+    ReadSignal, Signal, SignalVec, WriteSignal,
+};
+pub use velo_dom::{signal_value, ViewValue};
+pub use velo_macro::{component, view};
+
+#[doc(hidden)]
+pub use velo_dom::PlainViewValue;
 
 /// The Unified Framework Prelude
 /// Bringing this into scope via `use velo::prelude::*;` fully seeds your application files
 /// with reactivity primitives, DOM nodes, components, routers, and the view! macro.
 pub mod prelude {
     // Re-export core reactive primitives
-    pub use velo_core::{create_effect, Signal};
+    pub use velo_core::{
+        create_effect, create_memo, create_signal, provide_context, use_context, with_context,
+        ReadSignal, Signal, SignalVec, WriteSignal,
+    };
+    // Re-export the signal-unwrapping machinery used by the view! macro
+    #[doc(hidden)]
+    pub use velo_dom::PlainViewValue;
+    pub use velo_dom::{signal_value, ViewValue};
 
     // Re-export primary DOM manipulation types and helpers
     pub use velo_dom::{document, DomNode, RenderDynamic};
 
     // Re-export router structures
-    pub use velo_router::{
-        // Add your standard routing structs here (e.g., Router, Route, Link)
-        Link,
-        Route,
-        Router,
-    };
+    pub use velo_router::{Link, Route, Router};
 
-    // Re-export the main view procedural macro
-    pub use velo_macro::view;
+    // Re-export the view! + #[component] procedural macros
+    pub use velo_macro::{component, view};
 
     // Bring the nested sub-crate identifiers directly inside the prelude namespace scope.
     // This allows references like `velo_dom::DomNode` to be completely understood

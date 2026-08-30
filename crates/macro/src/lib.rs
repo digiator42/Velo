@@ -4,7 +4,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Expr, LitStr, Token};
+use syn::{Expr, Ident, LitStr, Token};
 
 enum VNode {
     Element {
@@ -17,6 +17,7 @@ enum VNode {
     ForLoop {
         pat: syn::Pat,
         expr: Expr,
+        key: Option<Expr>,
         body: Vec<VNode>,
     },
     Fragment(Vec<VNode>), // hold sibling nodes without a wrapper tag!
@@ -59,6 +60,22 @@ impl Parse for VNode {
                 content.parse::<Token![in]>()?;
                 let expr = content.parse::<Expr>()?;
 
+                // Optional key expression: `key = |item| item.id` or `key = item.id`
+                let key = if content.peek(Ident) && content.peek2(Token![=]) {
+                    let ident: Ident = content.parse()?;
+                    if ident == "key" {
+                        content.parse::<Token![=]>()?;
+                        Some(content.parse::<Expr>()?)
+                    } else {
+                        return Err(syn::Error::new(
+                            ident.span(),
+                            "Velo: unexpected token after `in <expr>` in for-loop (expected `key =` or `{`)",
+                        ));
+                    }
+                } else {
+                    None
+                };
+
                 let loop_body_content;
                 syn::braced!(loop_body_content in content);
 
@@ -67,7 +84,12 @@ impl Parse for VNode {
                     body.push(loop_body_content.parse::<VNode>()?);
                 }
 
-                return Ok(VNode::ForLoop { pat, expr, body });
+                return Ok(VNode::ForLoop {
+                    pat,
+                    expr,
+                    key,
+                    body,
+                });
             }
 
             // Try to parse as a simple expression first, fallback to a full statement block expression!
@@ -220,28 +242,54 @@ impl ToTokens for VNode {
                     });
                 } else {
                     tokens.extend(quote! {
-                        velo_dom::DomNode::render_expression(move || #expr)
+                        velo_dom::DomNode::render_expression(move || velo_dom::signal_value!(#expr))
                     });
                 }
             }
-            VNode::ForLoop { pat, expr, body } => {
+            VNode::ForLoop {
+                pat,
+                expr,
+                key,
+                body,
+            } => {
                 let compiled_body_nodes = body.iter().map(|child| {
                     quote! { #child }
                 });
 
-                tokens.extend(quote! {
-                    {
-                        let loop_fragment = velo_dom::DomNode::element("div");
-                        loop_fragment.reactive_attribute("class", || "contents".into());
+                if let Some(key_expr) = key {
+                    // Keyed, fine-grained list: uses SignalVec + the DOM reconciler.
+                    tokens.extend(quote! {
+                        {
+                            let loop_fragment = velo_dom::DomNode::element("div");
+                            loop_fragment.reactive_attribute("class", || "contents".into());
 
-                        for #pat in #expr {
-                            #(
-                                loop_fragment.append(&#compiled_body_nodes);
-                            )*
+                            let list = (#expr).clone();
+                            let key_fn = #key_expr;
+                            loop_fragment.render_signal_vec(
+                                &list,
+                                key_fn,
+                                move |#pat| -> velo_dom::DomNode {
+                                    #(#compiled_body_nodes)*
+                                }
+                            );
+                            loop_fragment
                         }
-                        loop_fragment
-                    }
-                });
+                    });
+                } else {
+                    tokens.extend(quote! {
+                        {
+                            let loop_fragment = velo_dom::DomNode::element("div");
+                            loop_fragment.reactive_attribute("class", || "contents".into());
+
+                            for #pat in #expr {
+                                #(
+                                    loop_fragment.append(&#compiled_body_nodes);
+                                )*
+                            }
+                            loop_fragment
+                        }
+                    });
+                }
             }
             VNode::Fragment(children) => {
                 let compiled_children = children.iter().map(|child| {
@@ -299,6 +347,18 @@ impl ToTokens for VNode {
                             setup_statements.push(quote! {
                                 parent_node.on(#event_type, #val);
                             });
+                        } else if key.starts_with("class:") {
+                            // Reactive class toggle: class:active={ is_on }
+                            let class_name = key.strip_prefix("class:").unwrap().to_string();
+                            setup_statements.push(quote! {
+                                parent_node.toggle_class(#class_name, move || velo_dom::signal_value!(#val));
+                            });
+                        } else if key.starts_with("style:") {
+                            // Reactive inline style: style:color={ color }
+                            let prop = key.strip_prefix("style:").unwrap().to_string();
+                            setup_statements.push(quote! {
+                                parent_node.reactive_style(#prop, move || velo_dom::signal_value!(#val));
+                            });
                         } else if key == "disabled"
                             || key == "checked"
                             || key == "selected"
@@ -323,7 +383,7 @@ impl ToTokens for VNode {
                         });
                         } else {
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute(#key, move || format!("{}", #val));
+                                parent_node.reactive_attribute(#key, move || format!("{}", velo_dom::signal_value!(#val)));
                             });
                         }
                     }
@@ -352,4 +412,36 @@ pub fn view(input: TokenStream) -> TokenStream {
         Ok(parsed_root) => TokenStream::from(parsed_root.to_token_stream()),
         Err(err) => TokenStream::from(err.to_compile_error()),
     }
+}
+
+/// `#[component]` turns a plain function into a Velo component.
+///
+/// It rewrites the function's return type to `velo_dom::DomNode` so the body can
+/// end with a `view! { ... }` tail expression (no explicit `return` / `-> DomNode`
+/// needed). Component arguments are passed by the `view!` macro as usual.
+///
+/// ```ignore
+/// #[velo::component]
+/// fn UserCard(name: String, active: bool) {
+///     view! {
+///         <div class:active={ active }>
+///             <p>"Hello, " { name }</p>
+///         </div>
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut func = match syn::parse::<syn::ItemFn>(item) {
+        Ok(f) => f,
+        Err(e) => return TokenStream::from(e.to_compile_error()),
+    };
+
+    // Force the return type to DomNode (accept `-> impl ...`, `-> DomNode`, or none).
+    func.sig.output = syn::ReturnType::Type(
+        Default::default(),
+        Box::new(syn::parse_quote!(velo_dom::DomNode)),
+    );
+
+    TokenStream::from(quote! { #func })
 }

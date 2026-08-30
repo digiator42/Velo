@@ -1,4 +1,4 @@
-use velo_core::{create_effect};
+use velo_core::{create_effect, SignalVec};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, Node};
@@ -49,11 +49,61 @@ macro_rules! impl_render_for_primitives {
 
 // Tell the framework how to dynamically render text, numbers, and booleans inline
 impl_render_for_primitives!(
-    String, &str, bool,
-    i8, i16, i32, i64, i128, isize,
-    u8, u16, u32, u64, u128, usize,
-    f32, f64
+    String, &str, bool, i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64
 );
+
+// Any `RenderDynamic` type is a plain (non-signal) view value. `PlainViewValue`
+// is a marker implemented only here, never for signals, so the `ViewValue`
+// blanket below doesn't overlap with the `Signal`/`ReadSignal` impls.
+impl<T: RenderDynamic + 'static> PlainViewValue for T {}
+
+/// Trait powering the `view!` macro's automatic signal unwrapping.
+///
+/// `view! { { count } }` and `name={ signal }` wrap the expression in
+/// `signal_value!(..)`, which calls [`ViewValue::view_value`]. Signal types
+/// unwrap to their inner value (and subscribe the running effect); plain
+/// `RenderDynamic` values pass through unchanged. Takes `&self` so the source
+/// handle is borrowed, not moved (handles may be reused in other closures).
+pub trait ViewValue {
+    type Out;
+    fn view_value(&self) -> Self::Out;
+}
+
+impl<T: Clone + 'static> ViewValue for velo_core::ReadSignal<T> {
+    type Out = T;
+    fn view_value(&self) -> T {
+        self.get()
+    }
+}
+
+impl<T: Clone + 'static> ViewValue for velo_core::Signal<T> {
+    type Out = T;
+    fn view_value(&self) -> T {
+        self.get()
+    }
+}
+
+// Marker trait so plain `RenderDynamic` values can get a `ViewValue` blanket
+// impl without overlapping the `Signal`/`ReadSignal` impls above.
+pub trait PlainViewValue {}
+
+// Gated on `PlainViewValue` so it never overlaps with the `Signal`/`ReadSignal`
+// impls above (those types intentionally do not implement `PlainViewValue`).
+impl<T: PlainViewValue + Clone + 'static> ViewValue for T {
+    type Out = T;
+    fn view_value(&self) -> T {
+        self.clone()
+    }
+}
+
+/// Helper used by the `view!` macro: read a reactive value (or pass through a
+/// plain value) inside the current effect so it becomes a tracking dependency.
+#[macro_export]
+macro_rules! signal_value {
+    ($expr:expr) => {{
+        $crate::ViewValue::view_value(&$expr)
+    }};
+}
 
 /// A wrapper around a real native browser DOM element
 #[derive(Clone)]
@@ -169,6 +219,154 @@ impl DomNode {
         F: FnMut() -> String + 'static,
     {
         Self::reactive_text(move || f())
+    }
+
+    /// Toggles a single class name on/off reactively based on a boolean signal.
+    pub fn toggle_class<F>(&self, class_name: &str, mut is_on: F)
+    where
+        F: FnMut() -> bool + 'static,
+    {
+        let el: Element = self
+            .raw_node
+            .clone()
+            .dyn_into()
+            .expect("Velo: Can only toggle classes on element nodes");
+        let class_name = class_name.to_string();
+
+        create_effect(move || {
+            let on = is_on();
+            if on {
+                let _ = el.class_list().add_1(&class_name);
+            } else {
+                let _ = el.class_list().remove_1(&class_name);
+            }
+        });
+    }
+
+    /// Binds a CSS inline style property reactively to a string value. Multiple
+    /// `reactive_style` calls on the same element are merged (each keeps its own
+    /// property) by accumulating into the element's `style` attribute.
+    pub fn reactive_style<F>(&self, property: &str, mut f: F)
+    where
+        F: FnMut() -> String + 'static,
+    {
+        let el: Element = self
+            .raw_node
+            .clone()
+            .dyn_into()
+            .expect("Velo: Can only bind styles to element nodes");
+        let property = property.to_string();
+
+        // Accumulate inline style properties so concurrent bindings don't clobber.
+        let styles: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, String>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
+        let styles_c = std::rc::Rc::clone(&styles);
+
+        create_effect(move || {
+            let value = f();
+            styles_c.borrow_mut().insert(property.clone(), value);
+
+            let css: String = styles_c
+                .borrow()
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let _ = el.set_attribute("style", &css);
+        });
+    }
+
+    /// Mounts a keyed, fine-grained reactive list. On each change the reconciler
+    /// inserts/removes/moves real DOM nodes to match the new keyed items, instead
+    /// of blowing away the whole subtree. `key` extracts the stable key; `render`
+    /// builds the `DomNode` for one item.
+    pub fn render_signal_vec<T, K, FKey, FRender>(
+        &self,
+        list: &SignalVec<T>,
+        key: FKey,
+        render: FRender,
+    ) where
+        T: Clone + 'static,
+        K: Eq + std::hash::Hash + Clone + 'static,
+        FKey: Fn(&T) -> K + 'static,
+        FRender: Fn(&T) -> DomNode + 'static + Copy,
+    {
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        use std::rc::Rc;
+
+        let container: Element = self
+            .raw_node
+            .clone()
+            .dyn_into()
+            .expect("Velo: Can only render a list into an element node");
+
+        // Node map keyed by the item's stable key, plus an ordered list of keys
+        // so we can detect moves/restores cheaply.
+        let nodes: Rc<RefCell<HashMap<K, DomNode>>> = Rc::new(RefCell::new(HashMap::new()));
+        let order: Rc<RefCell<Vec<K>>> = Rc::new(RefCell::new(Vec::new()));
+
+        let list = list.clone();
+        let nodes_c = Rc::clone(&nodes);
+        let order_c = Rc::clone(&order);
+
+        create_effect(move || {
+            let items: Vec<T> = list.get();
+            let new_keys: Vec<K> = items.iter().map(|it| key(it)).collect();
+
+            // Remove nodes whose key disappeared.
+            let live: std::collections::HashSet<K> = new_keys.iter().cloned().collect();
+            let stale: Vec<K> = order_c
+                .borrow()
+                .iter()
+                .filter(|k| !live.contains(k))
+                .cloned()
+                .collect();
+            for k in stale {
+                if let Some(node) = nodes_c.borrow_mut().remove(&k) {
+                    let _ = container.remove_child(&node.raw_node);
+                }
+            }
+
+            // Build a lookup of new items by key for quick render.
+            let mut by_key: HashMap<K, DomNode> = HashMap::new();
+            for it in &items {
+                let k = key(it);
+                let node = render(it);
+                by_key.insert(k, node);
+            }
+
+            // Reconcile against previous order: insert/move each item before the
+            // node that precedes it in the previous layout (or append at end).
+            let prev = order_c.borrow().clone();
+            for (idx, k) in new_keys.iter().enumerate() {
+                let node = match nodes_c.borrow_mut().get(k) {
+                    Some(existing) => existing.clone(),
+                    None => {
+                        let n = by_key.remove(k).expect("rendered node for key");
+                        nodes_c.borrow_mut().insert(k.clone(), n.clone());
+                        n
+                    }
+                };
+
+                let reference = if idx + 1 < new_keys.len() {
+                    nodes_c
+                        .borrow()
+                        .get(&new_keys[idx + 1])
+                        .map(|n| n.raw_node.clone())
+                } else {
+                    None
+                };
+
+                // Only re-insert if its position actually changed.
+                let needs_move = prev.get(idx) != Some(k);
+                if needs_move {
+                    let _ = container.insert_before(&node.raw_node, reference.as_ref());
+                }
+            }
+
+            *order_c.borrow_mut() = new_keys;
+        });
     }
 
     /// Accepts a closure from the macro, evaluates it inside an effect loop,
