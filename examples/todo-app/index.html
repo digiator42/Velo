@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Velo - Task Manager</title>
+    <style>
+        body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; }
+        a { color: #7dd3fc; text-decoration: none; font-weight: 600; padding: 0.5rem 0.75rem; border-radius: 6px; }
+        a:hover { background: #1e293b; }
+        nav { display: flex; gap: 8px; padding: 16px 24px; background: #111827; border-bottom: 1px solid #1f2937; align-items: center; }
+        nav .brand { font-weight: 800; color: #38bdf8; margin-right: 16px; font-size: 1.1rem; }
+        .page { padding: 32px 24px; max-width: 720px; margin: 0 auto; }
+        .done { text-decoration: line-through; color: #64748b; }
+        .task-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 8px; background: #111827; }
+        .task-row.done { background: #0b1220; }
+        .task-text { flex: 1; }
+        button { background: #0ea5e9; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        button:hover { background: #0284c7; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        button.ghost { background: transparent; border: 1px solid #334155; color: #cbd5e1; }
+        input[type="text"] { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 10px 12px; border-radius: 8px; flex: 1; }
+        .stats { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
+        .stat-card { background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 12px 20px; min-width: 120px; }
+        .stat-card .label { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-card .value { font-size: 1.6rem; font-weight: 700; color: #38bdf8; }
+        .adder { display: flex; gap: 8px; margin-bottom: 24px; }
+        .empty { color: #64748b; text-align: center; padding: 32px; font-style: italic; }
+        .filter { display: flex; gap: 8px; margin-bottom: 16px; }
+        .filter button { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+        .filter button.active { background: #0ea5e9; border-color: #0ea5e9; color: white; }
+        .counter { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
+        .counter .value { font-size: 1.4rem; font-weight: 700; color: #a78bfa; }
+    </style>
+    <link rel="data-trunk" href="Cargo.toml" data-type="rust"/>
+</head>
+<body>
+    <div id="app"></div>
+</body>
+</html>

@@ -233,6 +233,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "todo-app"
+version = "0.1.0"
+dependencies = [
+ "velo",
+ "velo_core",
+ "velo_dom",
+ "velo_macro",
+ "velo_router",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

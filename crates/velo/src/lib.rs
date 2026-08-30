@@ -1,15 +1,25 @@
 // 1. Re-export the underlying crates as public top-level modules.
 //    This allows explicit pathways like `velo::velo_dom::DomNode` to resolve perfectly.
 pub use velo_core as core;
-pub use velo_dom;
+pub use velo_dom as dom;
 pub use velo_macro as macro_internal;
 pub use velo_router as router;
 
 // 2. Re-export the foundational items at the root level of the crate.
 //    This fixes the macro generation path error for `velo::create_effect`.
 pub use velo_core::{
-    create_effect, create_memo, create_signal, provide_context, use_context, with_context,
-    ReadSignal, Signal, SignalVec, WriteSignal,
+    batch,
+    create_effect,
+    create_effect_with_cleanup,
+    create_memo,
+    create_signal,
+    provide_context,
+    use_context,
+    with_context,
+    ReadSignal,
+    Signal,
+    SignalVec,
+    WriteSignal,
 };
 pub use velo_dom::{signal_value, ViewValue};
 pub use velo_macro::{component, view};
@@ -23,8 +33,18 @@ pub use velo_dom::PlainViewValue;
 pub mod prelude {
     // Re-export core reactive primitives
     pub use velo_core::{
-        create_effect, create_memo, create_signal, provide_context, use_context, with_context,
-        ReadSignal, Signal, SignalVec, WriteSignal,
+        batch,
+        create_effect,
+        create_effect_with_cleanup,
+        create_memo,
+        create_signal,
+        provide_context,
+        use_context,
+        with_context,
+        ReadSignal,
+        Signal,
+        SignalVec,
+        WriteSignal,
     };
     // Re-export the signal-unwrapping machinery used by the view! macro
     #[doc(hidden)]
@@ -45,5 +65,5 @@ pub mod prelude {
     // without needing separate, manual imports!
     pub use crate::core;
     pub use crate::router;
-    pub use crate::velo_dom;
+    pub use crate::dom;
 }

@@ -1,27 +1,100 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EffectId(usize);
 
 thread_local! {
-    // Tracks just the ID of what is currently running to prevent recursive borrow conflicts
     static ACTIVE_EFFECT_ID: RefCell<Option<EffectId>> = RefCell::new(None);
-
-    // A registry linking running IDs back to their executable updates
     static EFFECT_REGISTRY: RefCell<Vec<Rc<RefCell<Effect>>>> = RefCell::new(Vec::new());
-
     static EFFECT_COUNTER: RefCell<usize> = RefCell::new(0);
+
+    // --- batching ---
+    /// Queue of effects ready to run; drained by `flush_effects`.
+    static PENDING_EFFECTS: RefCell<Vec<Rc<RefCell<Effect>>>> = RefCell::new(Vec::new());
+    /// Depth of nested `batch()` calls. 0 = no batch active.
+    static BATCH_DEPTH: RefCell<usize> = RefCell::new(0);
 }
+
+// ---------------------------------------------------------------------------
+// Effect
+// ---------------------------------------------------------------------------
 
 pub struct Effect {
     id: EffectId,
     func: Box<dyn FnMut()>,
+    /// When true, this effect has been disposed and should no longer run.
+    disposed: bool,
+    /// Optional cleanup callback run exactly once when the effect is disposed.
+    cleanup: Option<Box<dyn FnOnce()>>,
 }
 
-/// The shared reactive cell backing every signal handle.
-/// Cloning a handle clones the `Rc` pointers, never the data.
+impl Effect {
+    fn new(id: EffectId, func: Box<dyn FnMut()>) -> Self {
+        Self { id, func, disposed: false, cleanup: None }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Registration / disposal / flushing
+// ---------------------------------------------------------------------------
+
+fn register_effect(effect: &Rc<RefCell<Effect>>) {
+    EFFECT_REGISTRY.with(|r| r.borrow_mut().push(Rc::clone(effect)));
+}
+
+/// Mark an effect as disposed and run its cleanup (if any). Safe to call
+/// multiple times — only runs once.  **pub(crate)** — not part of the public API.
+pub(crate) fn dispose_effect(effect: &Rc<RefCell<Effect>>) {
+    let mut ef = effect.borrow_mut();
+    if !ef.disposed {
+        ef.disposed = true;
+        if let Some(cleanup) = ef.cleanup.take() {
+            cleanup();
+        }
+    }
+}
+
+/// Drain all pending effects. Called automatically at the end of `batch()`
+/// and also by `create_effect` to ensure any effects queued during the
+/// initial run get executed before the function returns.
+pub(crate) fn flush_effects() {
+    loop {
+        let to_run = PENDING_EFFECTS.with(|q| q.borrow_mut().drain(..).collect::<Vec<_>>());
+        if to_run.is_empty() {
+            break;
+        }
+        // Dedup by EffectId so an effect queued by multiple signals in one batch
+        // runs only once.
+        let mut seen: HashSet<EffectId> = HashSet::new();
+        let mut deduped: Vec<Rc<RefCell<Effect>>> = Vec::new();
+        for effect_rc in to_run {
+            let id = effect_rc.borrow().id;
+            if !seen.contains(&id) && !effect_rc.borrow().disposed {
+                seen.insert(id);
+                deduped.push(effect_rc);
+            }
+        }
+        for effect_rc in deduped {
+            // Re-register so a second .set() during this run will queue again.
+            register_effect(&effect_rc);
+            let effect_id = effect_rc.borrow().id;
+
+            let previous_id = ACTIVE_EFFECT_ID.with(|active| active.replace(Some(effect_id)));
+            let mut func = std::mem::replace(&mut effect_rc.borrow_mut().func, Box::new(|| {}));
+            (func)();
+            effect_rc.borrow_mut().func = func;
+            ACTIVE_EFFECT_ID.with(|active| active.replace(previous_id));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SignalInner — the shared reactive cell backing every signal handle.
+// ---------------------------------------------------------------------------
+
 pub(crate) struct SignalInner<T> {
     value: Rc<RefCell<T>>,
     subscribers: Rc<RefCell<Vec<Rc<RefCell<Effect>>>>>,
@@ -52,7 +125,7 @@ impl<T: Clone + 'static> SignalInner<T> {
                     if let Some(effect_rc) = registry
                         .borrow()
                         .iter()
-                        .find(|e| e.borrow().id == current_id)
+                        .find(|e| e.borrow().id == current_id && !e.borrow().disposed)
                     {
                         self.mount_effect(&effect_rc);
                     }
@@ -75,23 +148,39 @@ impl<T: Clone + 'static> SignalInner<T> {
         self.notify();
     }
 
+    /// Notify subscribers by pushing them onto the pending queue.
+    ///
+    /// If a `batch()` is active (thread-local depth > 0), effects are
+    /// accumulated in `PENDING_EFFECTS` and only flushed when the outermost
+    /// `batch()` exits. Otherwise they are flushed immediately.
     fn notify(&self) {
         let subs = self.subscribers.borrow().clone();
-        let mut executed: HashSet<EffectId> = HashSet::new();
+        let mut added: HashSet<EffectId> = HashSet::new();
+        let mut to_queue: Vec<Rc<RefCell<Effect>>> = Vec::new();
 
         for effect_rc in subs {
             let effect_id = effect_rc.borrow().id;
-            if !executed.contains(&effect_id) {
-                executed.insert(effect_id);
-
-                let previous_id = ACTIVE_EFFECT_ID.with(|active| active.replace(Some(effect_id)));
-
-                let mut func = std::mem::replace(&mut effect_rc.borrow_mut().func, Box::new(|| {}));
-                (func)();
-                effect_rc.borrow_mut().func = func;
-
-                ACTIVE_EFFECT_ID.with(|active| active.replace(previous_id));
+            if !effect_rc.borrow().disposed && added.insert(effect_id) {
+                to_queue.push(effect_rc);
             }
+        }
+
+        // Avoid pushing effects that are already in the queue (e.g. when
+        // multiple signals in a batch notify the same effect).
+        let existing_ids: HashSet<EffectId> = PENDING_EFFECTS.with(|q| {
+            q.borrow().iter().map(|e| e.borrow().id).collect()
+        });
+        for effect_rc in to_queue {
+            if !existing_ids.contains(&effect_rc.borrow().id) {
+                PENDING_EFFECTS.with(|q| q.borrow_mut().push(effect_rc));
+            }
+        }
+
+        // If we are not inside a batch, flush immediately so the change is
+        // visible synchronously (preserving the current behaviour for code
+        // that doesn't use `batch()`).
+        if BATCH_DEPTH.with(|d| *d.borrow()) == 0 {
+            flush_effects();
         }
     }
 
@@ -102,6 +191,10 @@ impl<T: Clone + 'static> SignalInner<T> {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Signal types
+// ---------------------------------------------------------------------------
 
 /// Read-only view of a reactive value. Calling `.get()` inside an effect
 /// subscribes that effect so it re-runs when the value changes.
@@ -213,68 +306,150 @@ impl<T> Clone for Signal<T> {
     }
 }
 
-/// Create a reactive signal, returning a `(read, write)` handle pair.
+// ---------------------------------------------------------------------------
+// Effect construction
+// ---------------------------------------------------------------------------
+
+/// Create a reactive effect. The closure runs immediately and re-runs whenever
+/// any signal it read changes.
 ///
-/// ```ignore
-/// let (count, set_count) = create_signal(0);
-/// set_count.set(count.get() + 1);
-/// ```
-pub fn create_signal<T: Clone + 'static>(initial_value: T) -> (ReadSignal<T>, WriteSignal<T>) {
-    let inner = SignalInner::new(initial_value);
-    (
-        ReadSignal {
-            inner: inner.clone(),
-        },
-        WriteSignal { inner },
-    )
-}
-
-/// A derived, cached read-only signal. The closure runs inside an effect, so it
-/// automatically re-computes whenever any signal it reads changes.
-pub fn create_memo<F, T>(mut f: F) -> ReadSignal<T>
-where
-    F: FnMut() -> T + 'static,
-    T: Clone + 'static,
-{
-    let init = f();
-    let (read, write) = create_signal(init);
-    create_effect({
-        let write = write.clone();
-        move || {
-            let next = f();
-            write.set(next);
-        }
-    });
-    read
-}
-
-pub fn create_effect<F>(func: F)
+/// Returns an [`EffectHandle`] that disposes the effect when dropped. Hold the
+/// handle for as long as the effect should stay alive; drop it to tear down
+/// the effect and run any cleanup closure.
+///
+/// # Cleaning up
+///
+/// For cleanup on disposal, use [`create_effect_with_cleanup`]. The handle alone
+/// is sufficient for effects that need no teardown — dropping it stops future
+/// re-runs and removes the effect from subscriber lists.
+pub fn create_effect<F>(func: F) -> EffectHandle
 where
     F: FnMut() + 'static,
 {
+    create_effect_inner(Box::new(func), None)
+}
+
+/// Create a reactive effect with a cleanup callback. The cleanup runs exactly
+/// once when the effect is disposed — either by dropping the returned
+/// [`EffectHandle`] or by calling [`dispose_effect`] manually.
+///
+/// This is the primary mechanism for tearing down side effects (event listeners,
+/// subscriptions, timers) when a component unmounts.
+pub fn create_effect_with_cleanup<F, C>(func: F, cleanup: C) -> EffectHandle
+where
+    F: FnMut() + 'static,
+    C: FnOnce() + 'static,
+{
+    create_effect_inner(Box::new(func), Some(Box::new(cleanup)))
+}
+
+/// Internal: construct an effect, register it, run it once, flush queues, return handle.
+fn create_effect_inner(
+    func: Box<dyn FnMut()>,
+    cleanup: Option<Box<dyn FnOnce()>>,
+) -> EffectHandle {
     let next_id = EFFECT_COUNTER.with(|counter| {
         let mut c = counter.borrow_mut();
         *c += 1;
         *c
     });
-
     let id = EffectId(next_id);
-    let effect = Rc::new(RefCell::new(Effect {
+    let effect = Effect {
         id,
-        func: Box::new(func),
-    }));
+        func,
+        disposed: false,
+        cleanup,
+    };
+    let effect_rc = Rc::new(RefCell::new(effect));
+    let effect_rc_clone = Rc::clone(&effect_rc);
 
     // Register globally
-    EFFECT_REGISTRY.with(|registry| registry.borrow_mut().push(Rc::clone(&effect)));
+    register_effect(&effect_rc);
 
-    // Initial seed evaluation execution run
+    // Initial synchronous execution
     let previous_id = ACTIVE_EFFECT_ID.with(|active| active.replace(Some(id)));
-
-    let mut func = std::mem::replace(&mut effect.borrow_mut().func, Box::new(|| {}));
+    let mut func = std::mem::replace(&mut effect_rc.borrow_mut().func, Box::new(|| {}));
     (func)();
-    effect.borrow_mut().func = func;
-
+    effect_rc.borrow_mut().func = func;
     ACTIVE_EFFECT_ID.with(|active| active.replace(previous_id));
+
+    // Flush any effects that were queued during the initial run.
+    flush_effects();
+
+    EffectHandle { effect: effect_rc_clone }
+}
+
+/// Dispose an effect by its handle. Runs cleanup (if any) and marks the
+/// effect as dead so it won't re-run on future signal changes.
+///
+/// EffectHandles are also `Drop`-based: dropping the handle disposes the
+/// effect automatically. Use this function when you need explicit disposal
+/// without keeping the handle alive.
+pub fn dispose_effect_handle(_handle: EffectHandle) {
+    // The drop of _handle does the actual work.
+    drop(_handle);
+}
+
+/// A handle to a live effect. Dropping it disposes the effect (runs cleanup
+/// and stops future re-runs).
+#[derive(Clone)]
+pub struct EffectHandle {
+    effect: Rc<RefCell<Effect>>,
+}
+
+impl Drop for EffectHandle {
+    fn drop(&mut self) {
+        dispose_effect(&self.effect);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// batch() — grouped signal updates
+// ---------------------------------------------------------------------------
+
+/// Run `f` inside a batch. Any number of signal `.set()` / `.update()` calls
+/// inside `f` (including those triggered transitively by effects) notify
+/// subscribers only once, when the batch exits.
+///
+/// Nested `batch()` calls are a no-op — the outermost batch owns the flush.
+/// This means `batch(|| { batch(|| { ... }); })` still flushes only once.
+///
+/// # Example
+///
+/// ```ignore
+/// let (a, set_a) = create_signal(0);
+/// let (b, set_b) = create_signal(0);
+/// let count = create_memo(move || a.get() + b.get());
+///
+/// // Without batch: set_a triggers count, then set_b triggers count again (2 runs).
+/// set_a.set(1);
+/// set_b.set(2);
+///
+/// // With batch: count runs once after both sets.
+/// batch(|| {
+///     set_a.set(1);
+///     set_b.set(2);
+/// });
+/// ```
+pub fn batch<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let depth = BATCH_DEPTH.with(|d| {
+        let mut cur = d.borrow_mut();
+        *cur += 1;
+        *cur
+    });
+
+    let was_top = depth == 1;
+    let result = f();
+
+    if was_top {
+        // Drain the accumulated queue exactly once.
+        flush_effects();
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -335,14 +510,13 @@ impl<T: Clone + 'static> SignalVec<T> {
         self.inner.update(f);
     }
 
-    /// Subscribe a callback that receives the (cloned) current items. Unlike
-    /// `create_effect`, this hands you the whole list so the DOM layer can diff.
-    pub fn subscribe<F: FnMut(Vec<T>) + 'static>(&self, mut f: F) {
+    /// Subscribe a callback that receives the (cloned) current items.
+    pub fn subscribe<F: FnMut(Vec<T>) + 'static>(&self, mut f: F) -> EffectHandle {
         let inner = self.inner.clone();
         create_effect(move || {
             let items = inner.get();
             f(items);
-        });
+        })
     }
 }
 
@@ -407,6 +581,64 @@ pub fn use_context<T: 'static + Clone>() -> Option<T> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// create_memo, create_signal — defined here so they can be tested.
+// ---------------------------------------------------------------------------
+
+/// A derived, cached read-only signal. The closure runs inside an effect, so it
+/// automatically re-computes whenever any signal it reads changes.
+pub fn create_memo<F, T>(mut f: F) -> Memo<T>
+where
+    F: FnMut() -> T + 'static,
+    T: Clone + 'static,
+{
+    let init = f();
+    let (read, write) = create_signal(init);
+    let handle = create_effect({
+        let write = write.clone();
+        let mut f = f;
+        move || {
+            let next = f();
+            write.set(next);
+        }
+    });
+    Memo {
+        read,
+        _handle: handle,
+    }
+}
+
+/// A memo is a `ReadSignal<T>` whose value is recomputed by an effect whenever
+/// one of its dependencies changes. Holding the `Memo` keeps the underlying
+/// effect alive; dropping it disposes the effect.
+#[derive(Clone)]
+pub struct Memo<T> {
+    read: ReadSignal<T>,
+    _handle: EffectHandle,
+}
+
+impl<T: Clone + 'static> Deref for Memo<T> {
+    type Target = ReadSignal<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.read
+    }
+}
+
+/// Create a reactive signal, returning a `(read, write)` handle pair.
+pub fn create_signal<T: Clone + 'static>(initial_value: T) -> (ReadSignal<T>, WriteSignal<T>) {
+    let inner = SignalInner::new(initial_value);
+    (
+        ReadSignal {
+            inner: inner.clone(),
+        },
+        WriteSignal { inner },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,7 +651,7 @@ mod tests {
         let tc = Rc::clone(&trigger_count);
         let c = count.clone();
 
-        create_effect(move || {
+        let _handle = create_effect(move || {
             *tc.borrow_mut() += 1;
             let _current = c.get();
         });
@@ -440,7 +672,7 @@ mod tests {
         let tc = Rc::clone(&trigger);
         let c = count.clone();
 
-        create_effect(move || {
+        let _handle = create_effect(move || {
             *tc.borrow_mut() += 1;
             let _ = c.get();
         });
@@ -471,7 +703,7 @@ mod tests {
         let tc = Rc::clone(&trigger);
         let l = list.clone();
 
-        create_effect(move || {
+        let _handle = create_effect(move || {
             *tc.borrow_mut() += 1;
             let _ = l.get();
         });
@@ -493,5 +725,104 @@ mod tests {
         // Outer context still intact after scoping.
         assert_eq!(use_context::<i32>(), Some(42));
         assert_eq!(use_context::<String>(), None);
+    }
+
+    #[test]
+    fn test_dispose_effect_stops_notification() {
+        let count = Signal::new(0);
+        let trigger = Rc::new(RefCell::new(0));
+        let tc = Rc::clone(&trigger);
+        let c = count.clone();
+
+        let handle = create_effect(move || {
+            *tc.borrow_mut() += 1;
+            let _ = c.get();
+        });
+
+        assert_eq!(*trigger.borrow(), 1);
+        count.set(1);
+        assert_eq!(*trigger.borrow(), 2);
+
+        // Dispose the effect; further changes should NOT trigger it.
+        drop(handle);
+        count.set(2);
+        assert_eq!(*trigger.borrow(), 2); // unchanged
+    }
+
+    #[test]
+    fn test_effect_cleanup_runs_on_dispose() {
+        let cleanup_flag = Rc::new(RefCell::new(false));
+
+        let handle = create_effect_with_cleanup(
+            || {},
+            {
+                let cf = Rc::clone(&cleanup_flag);
+                move || {
+                    *cf.borrow_mut() = true;
+                }
+            },
+        );
+
+        let before = *cleanup_flag.borrow();
+        assert!(!before);
+        drop(handle);
+        let after = *cleanup_flag.borrow();
+        assert!(after);
+    }
+
+    #[test]
+    fn test_batch_groups_notifications() {
+        let (a, set_a) = create_signal(0);
+        let (b, set_b) = create_signal(0);
+        let trigger = Rc::new(RefCell::new(0));
+        let tc = Rc::clone(&trigger);
+        let a = a.clone();
+        let b = b.clone();
+
+        let _handle = create_effect(move || {
+            *tc.borrow_mut() += 1;
+            let _ = a.get();
+            let _ = b.get();
+        });
+
+        // Initial run.
+        assert_eq!(*trigger.borrow(), 1);
+
+        // Without batch: each set triggers separately.
+        set_a.set(1);
+        assert_eq!(*trigger.borrow(), 2);
+        set_b.set(1);
+        assert_eq!(*trigger.borrow(), 3);
+
+        // Reset.
+        *trigger.borrow_mut() = 0;
+
+        // With batch: both sets before flush = one trigger.
+        batch(|| {
+            set_a.set(2);
+            set_b.set(2);
+        });
+        assert_eq!(*trigger.borrow(), 1);
+    }
+
+    #[test]
+    fn test_nested_batch_is_no_op() {
+        let (x, set_x) = create_signal(0);
+        let trigger = Rc::new(RefCell::new(0));
+        let tc = Rc::clone(&trigger);
+        let x = x.clone();
+
+        let _handle = create_effect(move || {
+            *tc.borrow_mut() += 1;
+            let _ = x.get();
+        });
+
+        batch(|| {
+            batch(|| {
+                set_x.set(1);
+            });
+        });
+        // Should flush exactly once despite two batch() calls.
+        assert_eq!(*trigger.borrow(), 1);
     }
 }

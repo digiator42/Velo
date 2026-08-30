@@ -83,7 +83,7 @@ impl<T: Clone + 'static> ViewValue for velo_core::Signal<T> {
     }
 }
 
-// Marker trait so plain `RenderDynamic` values can get a `ViewValue` blanket
+// Marker trait so plain RenderDynamic values can get a ViewValue blanket
 // impl without overlapping the `Signal`/`ReadSignal` impls above.
 pub trait PlainViewValue {}
 

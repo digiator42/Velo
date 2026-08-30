@@ -367,7 +367,7 @@ impl ToTokens for VNode {
                             setup_statements.push(quote! {
                             let p_node = parent_node.clone();
                             // Use the top-level unified facade pathway
-                            velo::create_effect({
+                            velo_core::create_effect({
                                 let val_sig = move || #val;
                                 move || {
                                     use wasm_bindgen::JsCast;
