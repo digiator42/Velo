@@ -916,3 +916,42 @@ where
 pub fn signal_vec<T: Clone + 'static>(initial: Vec<T>) -> SignalVec<T> {
     SignalVec::new(initial)
 }
+
+/// A reactive handle for async data.
+#[derive(Clone)]
+pub struct Resource<T: Clone + 'static> {
+    loading: Signal<bool>,
+    value: Signal<Option<T>>,
+}
+
+impl<T: Clone + 'static> Resource<T> {
+    pub fn loading(&self) -> bool {
+        self.loading.get()
+    }
+    pub fn value(&self) -> Option<T> {
+        self.value.get()
+    }
+}
+
+/// Create a reactive resource from an async future.
+pub fn create_resource<F, Fut, T>(fetcher: F) -> Resource<T>
+where
+    F: Fn() -> Fut + 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: Clone + 'static,
+{
+    let loading = Signal::new(true);
+    let value = Signal::new(None);
+
+    let loading_c = loading.clone();
+    let value_c = value.clone();
+
+    // Use wasm-bindgen-futures to spawn the future
+    wasm_bindgen_futures::spawn_local(async move {
+        let val = fetcher().await;
+        value_c.set(Some(val));
+        loading_c.set(false);
+    });
+
+    Resource { loading, value }
+}

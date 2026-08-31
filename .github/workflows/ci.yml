@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ----------------------------- Rust checks -----------------------------
+  rust:
+    name: Rust lint & check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (no warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build/check workspace for wasm
+        run: cargo check --workspace --all-targets --target wasm32-unknown-unknown
+
+      - name: Run tests (host)
+        run: cargo test --workspace
+
+  # ------------------- mdBook documentation build -------------------
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+
+      - name: Build docs
+        run: mdbook build docs
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: book
+          path: docs/book
+          if-no-files-found: error
+
+  # ------------------------- Pages deployment -------------------------
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: docs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: book
+          path: book
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

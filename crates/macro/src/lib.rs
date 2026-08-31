@@ -2,8 +2,95 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::ext::IdentExt;
+use syn::parse::discouraged::Speculative;
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{parse_macro_input, Expr, Ident, LitStr, Token};
+use syn::punctuated::Punctuated;
+use syn::{parse_macro_input, Expr, Ident, LitStr, Pat, Token};
+
+// --- JS-style arrow-closure sugar: `(pat, ..) => expr` / `(pat, ..) => { .. }` ---
+//
+// `() => expr` isn't valid standalone Rust syntax (the `=>` only exists inside
+// match arms), so this can never be ambiguous with a real Rust expression.
+// That means we can safely try it speculatively via `fork()` wherever an
+// attribute value or `{ .. }` block is parsed, and fall back to ordinary
+// `syn::Expr` parsing whenever it doesn't match.
+struct ArrowClosure {
+    inputs: Punctuated<Pat, Token![,]>,
+    body: Box<Expr>,
+}
+
+impl Parse for ArrowClosure {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let params;
+        syn::parenthesized!(params in input);
+        let inputs = params.parse_terminated(Pat::parse_single, Token![,])?;
+        input.parse::<Token![=>]>()?;
+
+        let body: Expr = if input.peek(syn::token::Brace) {
+            let block: syn::Block = input.parse()?;
+            Expr::Block(syn::ExprBlock {
+                attrs: vec![],
+                label: None,
+                block,
+            })
+        } else {
+            input.parse()?
+        };
+
+        // Arrow sugar always binds one full expression/block — no trailing
+        // tokens should remain in `input` for this attribute/block position.
+        Ok(ArrowClosure {
+            inputs,
+            body: Box::new(body),
+        })
+    }
+}
+
+/// Speculatively parses `(pat, ..) => ..` sugar. Consumes nothing and
+/// returns `None` if the shape doesn't match, so the caller can fall back to
+/// normal `Expr` parsing on the untouched stream.
+fn try_parse_arrow(input: ParseStream) -> Option<ArrowClosure> {
+    let fork = input.fork();
+    match fork.parse::<ArrowClosure>() {
+        Ok(arrow) => {
+            input.advance_to(&fork);
+            Some(arrow)
+        }
+        Err(_) => None,
+    }
+}
+
+/// Attribute-value position for `on:*` handlers, which must satisfy
+/// `FnMut(web_sys::Event) + 'static`. `() => ..` gets an injected, discarded
+/// event param; `(e) => ..` binds the event to `e` (untyped — inferred from
+/// the `on()` bound, exactly like a hand-written closure would be).
+fn parse_event_handler_value(input: ParseStream) -> Result<Expr> {
+    if let Some(ArrowClosure { inputs, body }) = try_parse_arrow(input) {
+        let closure: Expr = if inputs.is_empty() {
+            syn::parse_quote! { move |_evt: web_sys::Event| #body }
+        } else {
+            syn::parse_quote! { move |#inputs| #body }
+        };
+        return Ok(closure);
+    }
+    input.parse::<Expr>()
+}
+
+/// `{ .. }` reactive-expression position, which wants `FnMut() -> R` (see the
+/// `Expr::Closure(_)` branch in `ToTokens for VNode` below). Only the 0-arg
+/// form makes sense here — reactive expressions don't receive anything — so
+/// non-empty params are left unhandled and fall through to a normal parse
+/// error rather than silently doing the wrong thing.
+fn try_parse_reactive_arrow(input: ParseStream) -> Option<Expr> {
+    let fork = input.fork();
+    let arrow = fork.parse::<ArrowClosure>().ok()?;
+    if !arrow.inputs.is_empty() {
+        return None;
+    }
+    input.advance_to(&fork);
+    let body = arrow.body;
+    Some(syn::parse_quote! { move || #body })
+}
 
 enum VNode {
     Element {
@@ -25,6 +112,16 @@ enum VNode {
 struct VAttr {
     key: String,
     value: Expr,
+}
+
+impl ToTokens for VAttr {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        let key = &self.key;
+        let value = &self.value;
+        tokens.extend(quote! {
+            #key: #value
+        });
+    }
 }
 
 impl Parse for VAttr {
@@ -94,6 +191,14 @@ impl Parse for VNode {
             // Try to parse as a simple expression first, fallback to a full statement block expression!
             let content;
             let braced_token = syn::braced!(content in input); // Advance actual stream pointer
+
+            // `{ () => expr }` sugar for a zero-arg reactive closure, e.g.
+            // `{ () => count.get() * 2 }` instead of `{ move || count.get() * 2 }`.
+            if let Some(closure_expr) = try_parse_reactive_arrow(&content) {
+                if content.is_empty() {
+                    return Ok(VNode::ReactiveExpression(closure_expr));
+                }
+            }
 
             if let Ok(expr) = content.parse::<Expr>() {
                 if content.is_empty() {
@@ -170,7 +275,13 @@ impl Parse for VNode {
             let value: Expr = if input.peek(syn::token::Brace) {
                 let content;
                 syn::braced!(content in input);
-                content.parse()?
+                if key.starts_with("on:") {
+                    // `on:click={() => set_count.update(|c| c + 1)}` sugar,
+                    // expanding to `move |_evt: web_sys::Event| ..` / `move |e| ..`.
+                    parse_event_handler_value(&content)?
+                } else {
+                    content.parse()?
+                }
             } else {
                 let lit: LitStr = input.parse()?;
                 Expr::Lit(syn::ExprLit {
@@ -313,17 +424,51 @@ impl ToTokens for VNode {
 
                 if first_char.is_uppercase() {
                     let component_ident = syn::Ident::new(tag_name, proc_macro2::Span::call_site());
+                    let component_name = component_ident.to_string();
+
+                    // Check if a `children` prop is being passed in attributes (e.g. children={content})
+                    let mut children_attr_val: Option<TokenStream2> = None;
+                    let filtered_attrs: Vec<_> = attributes
+                        .iter()
+                        .filter(|attr| {
+                            if attr.key == "children" {
+                                children_attr_val = Some(quote! { #attr.value });
+                                false
+                            } else {
+                                true
+                            }
+                        })
+                        .collect();
+
+                    let is_show = component_name == "Show";
+                    let is_suspense = component_name == "Suspense";
 
                     let mut args = Vec::new();
-                    for attr in attributes {
-                        let val = &attr.value;
-                        args.push(quote! { #val });
-                    }
 
-                    if !children.is_empty() {
-                        args.push(quote! {
-                            view! { #(#children)* }
-                        });
+                    // For Show/Suspense: use named props (when: cond, fallback: node, children: {...})
+                    if is_show || is_suspense {
+                        for attr in &filtered_attrs {
+                            let key = &attr.key;
+                            let val = &attr.value;
+                            args.push(quote! { #key: #val });
+                        }
+                        let children_block = if !children.is_empty() {
+                            quote! { { #(#children)* } }
+                        } else {
+                            quote! { velo_dom::DomNode::text("") }
+                        };
+                        args.push(quote! { children: #children_block });
+                    } else {
+                        // Regular component: positional args (the function signature determines order)
+                        for attr in &filtered_attrs {
+                            let val = &attr.value;
+                            args.push(quote! { #val });
+                        }
+                        if let Some(child_arg) = children_attr_val {
+                            args.push(child_arg);
+                        } else if !children.is_empty() {
+                            args.push(quote! { view! { #(#children)* } });
+                        }
                     }
 
                     tokens.extend(quote! {
@@ -488,13 +633,30 @@ pub fn view(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut func = match syn::parse::<syn::ItemFn>(item) {
         Ok(f) => f,
         Err(e) => return TokenStream::from(e.to_compile_error()),
     };
 
-    // Force the return type to DomNode (accept `-> impl ...`, `-> DomNode`, or none).
+    let props_type: Option<syn::Ident> = if !attr.is_empty() {
+        Some(syn::parse_macro_input!(attr as syn::Ident))
+    } else {
+        None
+    };
+
+    // If props struct is provided, ensure the function takes a single argument of that type
+        if let Some(_props_ty) = props_type {
+        if func.sig.inputs.len() != 1 {
+            return TokenStream::from(syn::Error::new_spanned(
+                &func.sig,
+                "Components with props struct must take exactly one argument of that type",
+            ).to_compile_error());
+        }
+        // Could also validate the type here if needed
+    }
+
+    // Force the return type to DomNode
     func.sig.output = syn::ReturnType::Type(
         Default::default(),
         Box::new(syn::parse_quote!(velo_dom::DomNode)),

@@ -517,4 +517,16 @@ pub fn mount_to_id_deprecated(id: &str, root_node: DomNode) {
         .expect("Velo: Failed to mount root node allocation to layout tree container target");
 }
 
+pub fn Show(children: Vec<DomNode>, when: bool, fallback: Option<DomNode>) -> DomNode {
+    if when {
+        let frag = DomNode::fragment();
+        for child in children {
+            frag.append(&child);
+        }
+        frag
+    } else {
+        fallback.unwrap_or_else(|| DomNode::text(""))
+    }
+}
+
 

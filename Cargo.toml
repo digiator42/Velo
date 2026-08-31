@@ -9,6 +9,7 @@ members = [
     "examples/features-demo",
     "examples/todo-app",
     "examples/memo-unwrap-check",
+    "examples/arrow-closures",
 ]
 resolver = "2"
 
@@ -18,6 +19,7 @@ syn = { version = "2.0", features = ["full", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 web-sys = "0.3"
 js-sys = "0.3"
 

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 velo_core = { path = "../core" }
+velo_macro = { path = "../macro" }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 

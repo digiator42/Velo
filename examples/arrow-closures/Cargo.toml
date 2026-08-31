@@ -1,0 +1,15 @@
+[package]
+name = "arrow-closures"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+velo_core = { path = "../../crates/core" }
+velo_dom = { path = "../../crates/dom" }
+velo_macro = { path = "../../crates/macro" }
+velo = { path = "../../crates/velo" }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true }
