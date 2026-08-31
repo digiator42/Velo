@@ -1,10 +1,9 @@
-extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Expr, Ident, LitStr, Token};
+use syn::{parse_macro_input, Expr, Ident, LitStr, Token};
 
 enum VNode {
     Element {
@@ -223,7 +222,6 @@ impl Parse for VNode {
     }
 }
 
-// --- Code Generation Engine ---
 
 impl ToTokens for VNode {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
@@ -234,16 +232,17 @@ impl ToTokens for VNode {
                 });
             }
             VNode::ReactiveExpression(expr) => {
-                let expr_string = quote! { #expr }.to_string();
-
-                if expr_string.starts_with("move") || expr_string.starts_with("||") {
-                    tokens.extend(quote! {
-                        velo_dom::DomNode::render_expression(#expr)
-                    });
-                } else {
-                    tokens.extend(quote! {
-                        velo_dom::DomNode::render_expression(move || velo_dom::signal_value!(#expr))
-                    });
+                match expr {
+                    Expr::Closure(_) => {
+                        tokens.extend(quote! {
+                            velo_dom::DomNode::render_expression(#expr)
+                        });
+                    }
+                    _ => {
+                        tokens.extend(quote! {
+                            velo_dom::DomNode::render_expression(move || velo_dom::signal_value!(#expr))
+                        });
+                    }
                 }
             }
             VNode::ForLoop {
@@ -278,8 +277,7 @@ impl ToTokens for VNode {
                 } else {
                     tokens.extend(quote! {
                         {
-                            let loop_fragment = velo_dom::DomNode::element("div");
-                            loop_fragment.reactive_attribute("class", || "contents".into());
+                            let loop_fragment = velo_dom::DomNode::fragment();
 
                             for #pat in #expr {
                                 #(
@@ -503,4 +501,55 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     );
 
     TokenStream::from(quote! { #func })
+}
+
+/// Declarative macro for defining route tables.
+#[proc_macro]
+pub fn routes(input: TokenStream) -> TokenStream {
+    let routes = parse_macro_input!(input as RouteList);
+
+    let route_entries = routes
+        .0
+        .iter()
+        .map(|(path, component)| {
+            let path_lit = path;
+            let comp = component;
+            quote! {
+                velo_router::Route {
+                    path: #path_lit,
+                    component: #comp,
+                }
+            }
+        });
+
+    let expanded = quote! {
+        vec![#(#route_entries),*]
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// Parse helper: `"/path" => component_fn`
+struct RouteEntry {
+    path: LitStr,
+    component: Ident,
+}
+
+/// Parse the full route list.
+struct RouteList(Vec<(LitStr, Ident)>);
+
+impl syn::parse::Parse for RouteList {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut entries = Vec::new();
+        while !input.is_empty() {
+            let path: LitStr = input.parse()?;
+            input.parse::<syn::Token![=>]>()?;
+            let comp: Ident = input.parse()?;
+            if !input.is_empty() {
+                input.parse::<syn::Token![,]>()?;
+            }
+            entries.push((path, comp));
+        }
+        Ok(RouteList(entries))
+    }
 }

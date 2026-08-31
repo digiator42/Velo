@@ -390,31 +390,28 @@ impl DomNode {
         F: FnMut() -> R + 'static,
         R: RenderDynamic + 'static,
     {
-        // Change "div" to "span" to make the expression wrapper an inline element!
-        let container = document()
-            .create_element("span")
-            .expect("Velo: Failed to create expression wrapper block");
-        container
-            .set_attribute("class", "velo-expression-wrapper")
-            .unwrap();
+        // Use a fragment as the container for dynamic expressions.
+        // Fragments are transparent containers that unpack into their parent.
+        let container = DomNode::fragment();
+        let container_raw = container.raw_node.clone();
 
-        let container_raw = container.clone();
         let mut f_clone = move || f();
 
         velo_core::create_effect(move || {
             let val: R = f_clone();
             let resolved_node = val.render_dynamic();
 
-            container_raw.set_text_content(None);
+            // Clear the existing content of the fragment.
+            while let Some(child) = container_raw.first_child() {
+                container_raw.remove_child(&child).unwrap();
+            }
 
             container_raw
                 .append_child(&resolved_node.raw_node)
                 .expect("Velo: Failed to append dynamic expression variant");
         });
 
-        Self {
-            raw_node: container.into(),
-        }
+        container
     }
 }
 

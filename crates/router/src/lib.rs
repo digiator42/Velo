@@ -1,10 +1,12 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use velo_core::{create_effect, Signal};
 use velo_dom::DomNode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use percent_encoding;
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 thread_local! {
     // Global tracking signal for the current URL path string
@@ -15,6 +17,28 @@ thread_local! {
             .pathname()
             .expect("Velo Router: Failed to read pathname")
     );
+    pub static CURRENT_QUERY: Signal<HashMap<String, String>> =
+        Signal::new(parse_query_string(&web_sys::window().expect("Velo Router: No window found").location().search().unwrap_or_default()));
+}
+
+fn parse_query_string(query: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let s = query.strip_prefix('?').unwrap_or(query);
+    if s.is_empty() {
+        return map;
+    }
+    for pair in s.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            map.insert(url_decode(k), url_decode(v));
+        } else {
+            map.insert(url_decode(pair), String::new());
+        }
+    }
+    map
+}
+
+fn url_decode(s: &str) -> String {
+    percent_encoding::percent_decode_str(s).decode_utf8_lossy().to_string()
 }
 
 /// Programmatically updates the browser URL and alerts the active Route Signal
@@ -33,6 +57,9 @@ pub fn navigate_to(path: &str) {
     CURRENT_PATH.with(|path_signal| {
         path_signal.set(path.to_string());
     });
+
+    let query = parse_query_string(&window.location().search().unwrap_or_default());
+    CURRENT_QUERY.with(|q| q.set(query));
 }
 
 /// Initializes global browser listeners to intercept browser back/forward buttons
@@ -41,10 +68,12 @@ pub fn init_router_listeners() {
 
     let on_popstate = Closure::wrap(Box::new(move |_e: web_sys::PopStateEvent| {
         let current_path_str = web_sys::window().unwrap().location().pathname().unwrap();
+        let query = parse_query_string(&web_sys::window().unwrap().location().search().unwrap_or_default());
 
         CURRENT_PATH.with(|path_signal| {
             path_signal.set(current_path_str);
         });
+        CURRENT_QUERY.with(|q| q.set(query));
     }) as Box<dyn FnMut(web_sys::PopStateEvent)>);
 
     window
@@ -162,9 +191,28 @@ impl FRouter {
     pub fn params() -> HashMap<String, String> {
         ACTIVE_PARAMS.with(|p| p.borrow().clone())
     }
+
+    /// Retrieve a typed route parameter with automatic parsing.
+    /// Returns `None` if the parameter is missing or fails to parse.
+    pub fn use_param<T: std::str::FromStr>(key: &str) -> Option<T> {
+        ACTIVE_PARAMS.with(|p| p.borrow().get(key).and_then(|v| v.parse::<T>().ok()))
+    }
+
+    /// Retrieve a typed query parameter with automatic parsing.
+    /// Returns `None` if the parameter is missing or fails to parse.
+    pub fn use_query<T: std::str::FromStr>(key: &str) -> Option<T> {
+        CURRENT_QUERY.with(|q| q.get().get(key).and_then(|v| v.parse::<T>().ok()))
+    }
+
+    /// Get the current path string from the router.
+    pub fn use_route() -> String {
+        CURRENT_PATH.with(|p| p.get())
+    }
 }
 
+// =============================================================================
 // Ergonomic Router component for clean macro nesting: <Router>{ |path| ... }</Router>
+// =============================================================================
 #[allow(non_snake_case)]
 pub fn Router(routes: Vec<Route>) -> DomNode {
     static mut LISTENERS_INITIALIZED: bool = false;

@@ -72,7 +72,7 @@ pub mod prelude {
     pub use velo_router::{Link, Route, Router};
 
     // Re-export the view! + #[component] procedural macros
-    pub use velo_macro::{component, view};
+    pub use velo_macro::{component, view, routes};
 
     // Bring the nested sub-crate identifiers directly inside the prelude namespace scope.
     // This allows references like `velo_dom::DomNode` to be completely understood
