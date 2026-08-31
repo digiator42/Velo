@@ -3,10 +3,47 @@ name = "velo"
 version = "0.1.0"
 edition = "2021"
 description = "The unified, high-performance fine-grained reactive full-stack web framework."
+license = "MIT"
+repository = "https://github.com/digiator42/Velo"
+keywords = ["wasm", "reactive", "frontend", "dom", "web"]
+categories = ["wasm", "web-programming"]
 
 [dependencies]
-# Pull in your internal engine parts locally
-velo_core = { path = "../core" }
-velo_dom = { path = "../dom" }
-velo_router = { path = "../router" }
 velo_macro = { path = "../macro" }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+percent-encoding = "2.1"
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlSelectElement",
+    "HtmlTextAreaElement",
+    "DocumentFragment",
+    "Node",
+    "Text",
+    "Window",
+    "Event",
+    "MouseEvent",
+    "KeyboardEvent",
+    "console",
+    "Storage",
+    "DragEvent",
+    "DataTransfer",
+    "DataTransferItemList",
+    "Headers",
+    "Request",
+    "Response",
+    "History",
+    "Location",
+    "CssStyleDeclaration",
+    "DomTokenList",
+    "HtmlCollection",
+    "DomRect",
+    "PopStateEvent",
+]

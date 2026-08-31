@@ -21,7 +21,7 @@ pub fn UserCard(name: String, role: String) {
 ```
 
 ### What `#[component]` Does:
-* Rewrites the function signature to return `velo_dom::DomNode`.
+* Rewrites the function signature to return `velo::DomNode`.
 * Allows the function body to end directly with a `view! { ... }` tail expression without needing an explicit `return` statement.
 
 ---

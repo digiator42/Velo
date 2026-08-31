@@ -10,7 +10,7 @@ The most common entry point. Appends your app's root to `<body>` and returns a `
 
 ```rust
 use velo::prelude::*;
-use velo_dom::mount;
+use velo::mount;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -38,7 +38,7 @@ Use this when you want to mount into a specific existing element (e.g. `<div id=
 
 ```rust
 use velo::prelude::*;
-use velo_dom::mount_at;
+use velo::mount_at;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -88,7 +88,7 @@ mount_to_id("app", app_root);
 Velo exports a `document()` helper that returns a typed `web_sys::Document` instance:
 
 ```rust
-use velo_dom::document;
+use velo::document;
 
 let title = document().title();
 document().set_title("New App Title");

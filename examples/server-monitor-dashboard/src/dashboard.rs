@@ -1,7 +1,5 @@
 use crate::components::MetricCard;
-use velo_core::Signal;
-use velo_dom::DomNode;
-use r#velo_macro::view;
+use velo::prelude::*;
 use web_sys::js_sys;
 
 pub fn monitor_page() -> DomNode {

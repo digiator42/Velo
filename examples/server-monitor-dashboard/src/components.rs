@@ -1,7 +1,4 @@
-use velo_core::Signal;
-
-use velo_dom::DomNode;
-use r#velo_macro::view;
+use velo::prelude::*;
 
 #[allow(non_snake_case)]
 pub fn MetricCard(

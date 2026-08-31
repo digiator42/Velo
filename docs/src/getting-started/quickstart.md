@@ -37,7 +37,7 @@ In `src/lib.rs`, import Velo's prelude and define a reactive counter component:
 
 ```rust
 use velo::prelude::*;
-use velo_dom::mount_to_id;
+use velo::mount_to_id;
 use wasm_bindgen::prelude::*;
 
 fn app() -> DomNode {

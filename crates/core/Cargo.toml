@@ -1,8 +1,0 @@
-[package]
-name = "velo_core"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-dashmap = "6.0"
-wasm-bindgen-futures = "0.4"

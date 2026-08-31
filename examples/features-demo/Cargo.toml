@@ -7,10 +7,6 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-velo_core = { path = "../../crates/core" }
-velo_dom = { path = "../../crates/dom" }
-velo_macro = { path = "../../crates/macro" }
-velo_router = { path = "../../crates/router" }
 velo = { path = "../../crates/velo" }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }

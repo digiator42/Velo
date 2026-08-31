@@ -1,6 +1,4 @@
 use velo::prelude::*;
-use velo_core::SignalVec;
-use velo_dom::mount;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A simple application theme shared via context.
@@ -105,8 +103,8 @@ fn ThemeBadge() {
         <div class="badge">
             {
                 move || match theme.clone() {
-                    Some(t) => velo_dom::DomNode::text(if t.dark { "Dark mode on" } else { "Light mode on" }),
-                    None => velo_dom::DomNode::text("No theme in context"),
+                    Some(t) => DomNode::text(if t.dark { "Dark mode on" } else { "Light mode on" }),
+                    None => DomNode::text("No theme in context"),
                 }
             }
         </div>

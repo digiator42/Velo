@@ -22,10 +22,10 @@ view! {
 
 ## 2. Programmatic Navigation (`navigate_to`)
 
-To navigate programmatically (e.g. after a form submission or button click), call `velo_router::navigate_to`:
+To navigate programmatically (e.g. after a form submission or button click), call `velo::navigate_to`:
 
 ```rust
-use velo_router::navigate_to;
+use velo::navigate_to;
 
 view! {
     <button on:click={ move |_| {

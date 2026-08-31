@@ -11,12 +11,9 @@ No Virtual DOM — state changes update the real DOM surgically.
 
 ## Workspace layout
 
-- `crates/core` — reactivity engine: `Signal`, split `ReadSignal`/`WriteSignal`, `create_signal`, `create_effect`, `create_memo`.
-- `crates/dom` — `DomNode` wrapper over `web-sys`, the `view!` macro support, and `RenderDynamic`.
-- `crates/macro` — the `view!` declarative-HTML macro.
-- `crates/router` — client-side router (`Router`, `Route`, `Link`).
-- `crates/velo` — unified facade + `prelude`.
-- `examples/` — `counter-spa`, `server-monitor-dashboard`.
+- `crates/velo` — the unified single package: reactivity engine (`Signal`, split `ReadSignal`/`WriteSignal`, `create_signal`, `create_effect`, `create_memo`), `DomNode` wrapper over `web-sys`, the `view!` macro support and `RenderDynamic`, and the client-side router (`Router`, `Route`, `Link`, `FRouter`). Everything in one `prelude`.
+- `crates/macro` — the companion proc-macro package (`view!`, `#[component]`, `routes!`).
+- `examples/` — `counter-spa`, `server-monitor-dashboard`, `features-demo`, `todo-app`, `memo-unwrap-check`, `arrow-closures`.
 
 ## Quickstart
 

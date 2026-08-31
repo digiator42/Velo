@@ -7,7 +7,7 @@
 ## 1. Node Constructors
 
 ```rust
-use velo_dom::DomNode;
+use velo::DomNode;
 
 // Create standard element
 let div = DomNode::element("div");

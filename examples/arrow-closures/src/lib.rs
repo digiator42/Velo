@@ -5,7 +5,6 @@
 //! child closures. All forms expand to real Rust `move` closures at compile time.
 
 use velo::prelude::*;
-use velo_dom::mount;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A tiny counter toggled through arrow-sugar event handlers.

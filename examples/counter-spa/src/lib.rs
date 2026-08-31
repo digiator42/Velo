@@ -1,7 +1,4 @@
-use r#velo_macro::view;
-use velo_core::create_signal;
-use velo_dom::{mount, DomNode};
-use velo_router::Link;
+use velo::prelude::*;
 use wasm_bindgen::prelude::*;
 mod components;
 use components::UserCard;
@@ -42,7 +39,7 @@ fn profile_page() -> DomNode {
                     if show_card.get() {
                         view! { <UserCard name={ user_name.clone() } role={ "Admin".to_string() } /> }
                     } else {
-                        velo_dom::DomNode::text("")
+                        DomNode::text("")
                     }
                 }
             }

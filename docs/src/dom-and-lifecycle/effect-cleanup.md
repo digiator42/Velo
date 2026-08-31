@@ -35,7 +35,7 @@ When you append a child node to a parent (`parent.append(&child)`), the parent *
 To register custom cleanup logic on an effect:
 
 ```rust
-use velo_core::create_effect_with_cleanup;
+use velo::create_effect_with_cleanup;
 
 let handle = create_effect_with_cleanup(
     || {

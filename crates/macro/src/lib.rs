@@ -339,19 +339,19 @@ impl ToTokens for VNode {
         match self {
             VNode::StaticText(txt) => {
                 tokens.extend(quote! {
-                    velo_dom::DomNode::text(#txt)
+                    velo::DomNode::text(#txt)
                 });
             }
             VNode::ReactiveExpression(expr) => {
                 match expr {
                     Expr::Closure(_) => {
                         tokens.extend(quote! {
-                            velo_dom::DomNode::render_expression(#expr)
+                            velo::DomNode::render_expression(#expr)
                         });
                     }
                     _ => {
                         tokens.extend(quote! {
-                            velo_dom::DomNode::render_expression(move || velo_dom::signal_value!(#expr))
+                            velo::DomNode::render_expression(move || velo::signal_value!(#expr))
                         });
                     }
                 }
@@ -370,7 +370,7 @@ impl ToTokens for VNode {
                     // Keyed, fine-grained list: uses SignalVec + the DOM reconciler.
                     tokens.extend(quote! {
                         {
-                            let loop_fragment = velo_dom::DomNode::element("div");
+                            let loop_fragment = velo::DomNode::element("div");
                             loop_fragment.reactive_attribute("class", || "contents".into());
 
                             let list = (#expr).clone();
@@ -378,7 +378,7 @@ impl ToTokens for VNode {
                             loop_fragment.render_signal_vec(
                                 &list,
                                 key_fn,
-                                move |#pat| -> velo_dom::DomNode {
+                                move |#pat| -> velo::DomNode {
                                     #(#compiled_body_nodes)*
                                 }
                             );
@@ -388,7 +388,7 @@ impl ToTokens for VNode {
                 } else {
                     tokens.extend(quote! {
                         {
-                            let loop_fragment = velo_dom::DomNode::fragment();
+                            let loop_fragment = velo::DomNode::fragment();
 
                             for #pat in #expr {
                                 #(
@@ -407,7 +407,7 @@ impl ToTokens for VNode {
 
                 tokens.extend(quote! {
                     {
-                        let fragment_node = velo_dom::DomNode::fragment();
+                        let fragment_node = velo::DomNode::fragment();
                         #(
                             fragment_node.append(&#compiled_children);
                         )*
@@ -455,7 +455,7 @@ impl ToTokens for VNode {
                         let children_block = if !children.is_empty() {
                             quote! { { #(#children)* } }
                         } else {
-                            quote! { velo_dom::DomNode::text("") }
+                            quote! { velo::DomNode::text("") }
                         };
                         args.push(quote! { children: #children_block });
                     } else {
@@ -478,7 +478,7 @@ impl ToTokens for VNode {
                     let mut setup_statements = Vec::new();
 
                     setup_statements.push(quote! {
-                        let parent_node = velo_dom::DomNode::element(#tag_name);
+                        let parent_node = velo::DomNode::element(#tag_name);
                     });
 
                     for attr in attributes {
@@ -494,13 +494,13 @@ impl ToTokens for VNode {
                             // Reactive class toggle: class:active={ is_on }
                             let class_name = key.strip_prefix("class:").unwrap().to_string();
                             setup_statements.push(quote! {
-                                parent_node.toggle_class(#class_name, move || velo_dom::signal_value!(#val));
+                                parent_node.toggle_class(#class_name, move || velo::signal_value!(#val));
                             });
                         } else if key.starts_with("style:") {
                             // Reactive inline style: style:color={ color }
                             let prop = key.strip_prefix("style:").unwrap().to_string();
                             setup_statements.push(quote! {
-                                parent_node.reactive_style(#prop, move || velo_dom::signal_value!(#val));
+                                parent_node.reactive_style(#prop, move || velo::signal_value!(#val));
                             });
                         } else if key.starts_with("bind:value") {
                             // Two-way binding for text inputs, textareas, selects.
@@ -522,7 +522,7 @@ impl ToTokens for VNode {
                                 let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM (reactive value attribute).
                                 bind_node.reactive_attribute(#field_name, move || {
-                                    let v = velo_dom::signal_value!(bind_sig_1);
+                                    let v = velo::signal_value!(bind_sig_1);
                                     format!("{}", v)
                                 });
                                 // Forward DOM -> signal (on input, read element and set signal).
@@ -551,7 +551,7 @@ impl ToTokens for VNode {
                                 let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM (reactive checked attribute).
                                 bind_node.reactive_attribute("checked", move || {
-                                    if velo_dom::signal_value!(bind_sig_1) { "checked" } else { "" }
+                                    if velo::signal_value!(bind_sig_1) { "checked" } else { "" }
                                 });
                                 // Forward DOM -> signal (on change, read checked and set signal).
                                 bind_node.on(#event_name_str, move |e: web_sys::Event| {
@@ -569,7 +569,7 @@ impl ToTokens for VNode {
                             setup_statements.push(quote! {
                             let p_node = parent_node.clone();
                             // Use the top-level unified facade pathway
-                            velo_core::create_effect({
+                            velo::create_effect({
                                 let val_sig = move || #val;
                                 move || {
                                     use wasm_bindgen::JsCast;
@@ -585,7 +585,7 @@ impl ToTokens for VNode {
                         });
                         } else {
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute(#key, move || format!("{}", velo_dom::signal_value!(#val)));
+                                parent_node.reactive_attribute(#key, move || format!("{}", velo::signal_value!(#val)));
                             });
                         }
                     }
@@ -618,7 +618,7 @@ pub fn view(input: TokenStream) -> TokenStream {
 
 /// `#[component]` turns a plain function into a Velo component.
 ///
-/// It rewrites the function's return type to `velo_dom::DomNode` so the body can
+/// It rewrites the function's return type to `velo::DomNode` so the body can
 /// end with a `view! { ... }` tail expression (no explicit `return` / `-> DomNode`
 /// needed). Component arguments are passed by the `view!` macro as usual.
 ///
@@ -659,7 +659,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Force the return type to DomNode
     func.sig.output = syn::ReturnType::Type(
         Default::default(),
-        Box::new(syn::parse_quote!(velo_dom::DomNode)),
+        Box::new(syn::parse_quote!(velo::DomNode)),
     );
 
     TokenStream::from(quote! { #func })
@@ -677,7 +677,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
             let path_lit = path;
             let comp = component;
             quote! {
-                velo_router::Route {
+                velo::Route {
                     path: #path_lit,
                     component: #comp,
                 }

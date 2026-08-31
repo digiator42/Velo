@@ -1,5 +1,4 @@
 use velo::prelude::*;
-use velo_dom::mount;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::components::{AppState, Task, TaskRow};
@@ -80,9 +79,9 @@ fn tasks_page() -> DomNode {
             {
                 move || {
                     if state.tasks.get().is_empty() {
-                        velo_dom::DomNode::text("No tasks yet — add one above.")
+                        DomNode::text("No tasks yet — add one above.")
                     } else {
-                        velo_dom::DomNode::text("")
+                        DomNode::text("")
                     }
                 }
             }
@@ -106,12 +105,12 @@ fn stats_page() -> DomNode {
                     move || {
                         let titles = open_titles.get();
                         if titles.is_empty() {
-                            velo_dom::DomNode::text("All caught up!")
+                            DomNode::text("All caught up!")
                         } else {
-                            let frag = velo_dom::DomNode::fragment();
+                            let frag = DomNode::fragment();
                             for t in &titles {
-                                let li = velo_dom::DomNode::element("li");
-                                li.append(&velo_dom::DomNode::text(t));
+                                let li = DomNode::element("li");
+                                li.append(&DomNode::text(t));
                                 frag.append(&li);
                             }
                             frag

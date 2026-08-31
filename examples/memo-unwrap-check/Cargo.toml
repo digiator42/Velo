@@ -8,5 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 velo = { path = "../../crates/velo" }
-velo_dom = { path = "../../crates/dom" }
 wasm-bindgen = { workspace = true }

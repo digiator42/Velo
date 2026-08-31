@@ -33,7 +33,7 @@ let routes = routes! {
 You can also build the route vector manually using the `Route` struct:
 
 ```rust
-use velo_router::Route;
+use velo::Route;
 
 let routes = vec![
     Route { path: "/",            component: home_page },
@@ -50,7 +50,7 @@ Pass the route list to `<Router routes={ ... } />` in your app root:
 
 ```rust
 use velo::prelude::*;
-use velo_dom::mount;
+use velo::mount;
 
 #[wasm_bindgen(start)]
 pub fn main() {

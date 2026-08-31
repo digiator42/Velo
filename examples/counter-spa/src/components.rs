@@ -1,7 +1,4 @@
-use r#velo_macro::view;
-use velo_core::create_signal;
-use velo_core::ReadSignal;
-use velo_dom::DomNode;
+use velo::prelude::*;
 
 #[allow(non_snake_case)]
 pub fn UserCard(name: ReadSignal<String>, role: String) -> DomNode {

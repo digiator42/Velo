@@ -1,6 +1,4 @@
-use velo_dom::{DomNode, mount};
-use r#velo_macro::view;
-use velo_router::{FRouter, Link, Route, Router};
+use velo::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::dashboard::monitor_page;

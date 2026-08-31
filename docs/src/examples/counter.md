@@ -8,7 +8,7 @@ A complete, self-contained reactive counter application demonstrating signals, a
 
 ```rust
 use velo::prelude::*;
-use velo_dom::mount_to_id;
+use velo::mount_to_id;
 use wasm_bindgen::prelude::*;
 
 #[component]

@@ -1,6 +1,6 @@
 # Client-Side Routing Overview
 
-Velo includes a built-in client-side router (`velo_router`) designed specifically for Single Page Applications running in WebAssembly.
+Velo includes a built-in client-side router (part of the unified `velo` crate: `Router`, `Route`, `Link`, `FRouter`) designed specifically for Single Page Applications running in WebAssembly.
 
 ---
 
