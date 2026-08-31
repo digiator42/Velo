@@ -418,7 +418,13 @@ impl DomNode {
     }
 }
 
-/// Mounts the root framework application element directly to a target DOM container ID
+/// Mounts the root framework application element directly to a target DOM
+/// container ID.
+///
+/// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
+/// `mount_to_id` appends as a child (creating a wrapper) and cannot be
+/// unmounted via a returned handle.
+#[deprecated(note = "prefer mount()/mount_at(); see Velo docs §8")]
 pub fn mount_to_id(id: &str, root_node: DomNode) {
     let container = document()
         .get_element_by_id(id)
@@ -428,3 +434,90 @@ pub fn mount_to_id(id: &str, root_node: DomNode) {
         .append_child(&root_node.raw_node)
         .expect("Velo: Failed to mount root node allocation to layout tree container target");
 }
+
+// ---------------------------------------------------------------------------
+// Modern Mounting API  (§8): mount(), mount_at(), RootHandle
+// ---------------------------------------------------------------------------
+
+/// A handle to a mounted Velo root. Dropping it unmounts the app from the
+/// DOM (removes the root node from its parent). Calling `.unmount()` does
+/// the same explicitly and is idempotent.
+///
+/// Returned by [`mount`] and [`mount_at`] so the caller can tear down the
+/// entire app (useful for testing, remounting, and hot-reload teardown).
+#[derive(Clone)]
+pub struct RootHandle {
+    root: DomNode,
+}
+
+impl RootHandle {
+    /// Remove the root node(s) from the DOM. Safe to call multiple times.
+    pub fn unmount(self) {
+        if let Some(parent) = self.root.raw_node.parent_node() {
+            let _ = parent.remove_child(&self.root.raw_node);
+        }
+    }
+}
+
+impl Drop for RootHandle {
+    fn drop(&mut self) {
+        // Dispose any root-level effects here once effect-to-node tracking is
+        // in place. For now the DomNode Drop removes the node itself.
+        if let Some(parent) = self.root.raw_node.parent_node() {
+            let _ = parent.remove_child(&self.root.raw_node);
+        }
+    }
+}
+
+/// Convenience: mount a `DomNode` tree into `document.body()` as a fragment
+/// root (no wrapper element). Returns a `RootHandle` that can be dropped or
+/// `.unmount()`ed to tear the app down.
+///
+/// ```ignore
+/// let app = view! { <div class="page">...</div> };
+/// let handle = velo_dom::mount(app);
+/// // later: handle.unmount();
+/// ```
+pub fn mount(root: DomNode) -> RootHandle {
+    let body = document()
+        .body()
+        .expect("Velo: document has no body — are you running in a browser?");
+    mount_at(&body, root)
+}
+
+/// Mount a `DomNode` tree into a specific DOM `Node` as a fragment root.
+/// The root is **appended** into the target as a child (fragment roots
+/// unpack automatically, so there is no wrapper element).
+///
+/// Returns a `RootHandle` for explicit unmount / Drop-based teardown.
+///
+/// ```ignore
+/// let app = view! { <div class="page">...</div> };
+/// let div = document().get_element_by_id("app").unwrap();
+/// let handle = velo_dom::mount_at(&div, app);
+/// ```
+pub fn mount_at(target: &web_sys::Node, root: DomNode) -> RootHandle {
+    target
+        .append_child(&root.raw_node)
+        .expect("Velo: Failed to mount root node into target");
+    RootHandle { root }
+}
+
+/// Mounts the root framework application element directly to a target DOM
+/// container ID.
+///
+/// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
+/// `mount_to_id` appends as a child (creating a wrapper) and cannot be
+/// unmounted via a returned handle.
+#[deprecated(note = "prefer mount()/mount_at(); see Velo docs §8")]
+pub fn mount_to_id_deprecated(id: &str, root_node: DomNode) {
+    let container = document()
+        .get_element_by_id(id)
+        .expect("Velo: Mount targets specified container element ID could not be located");
+
+    container
+        .append_child(&root_node.raw_node)
+        .expect("Velo: Failed to mount root node allocation to layout tree container target");
+}
+
+

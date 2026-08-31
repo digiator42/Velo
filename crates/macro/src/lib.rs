@@ -374,9 +374,9 @@ impl ToTokens for VNode {
                             let field_name: syn::LitStr = syn::parse_quote! { "value" };
                             setup_statements.push(quote! {
                                 let bind_node = parent_node.clone();
-                                let bind_expr = (#val);
-                                let bind_sig_1 = bind_expr.clone();
-                                let bind_sig_2 = bind_expr.clone();
+                                let bind_tmp = (#val).clone();
+                                let bind_sig_1 = bind_tmp.clone();
+                                let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM (reactive value attribute).
                                 bind_node.reactive_attribute(#field_name, move || {
                                     let v = velo_dom::signal_value!(bind_sig_1);
@@ -403,9 +403,9 @@ impl ToTokens for VNode {
                             let event_name_str: syn::LitStr = syn::parse_quote! { "change" };
                             setup_statements.push(quote! {
                                 let bind_node = parent_node.clone();
-                                let bind_expr = (#val);
-                                let bind_sig_1 = bind_expr.clone();
-                                let bind_sig_2 = bind_expr.clone();
+                                let bind_tmp = (#val).clone();
+                                let bind_sig_1 = bind_tmp.clone();
+                                let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM (reactive checked attribute).
                                 bind_node.reactive_attribute("checked", move || {
                                     if velo_dom::signal_value!(bind_sig_1) { "checked" } else { "" }

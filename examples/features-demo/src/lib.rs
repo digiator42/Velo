@@ -1,6 +1,6 @@
 use velo::prelude::*;
 use velo_core::SignalVec;
-use velo_dom::mount_to_id;
+use velo_dom::mount;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A simple application theme shared via context.
@@ -130,5 +130,5 @@ pub fn run_app() {
         </div>
     };
 
-    mount_to_id("app", app_shell);
+    mount(app_shell);
 }

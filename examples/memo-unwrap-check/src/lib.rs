@@ -28,6 +28,6 @@ pub fn main() {
             { memo_unwrap_page() }
         </div>
     };
-    // The old mount_to_id is fine for this check; no wrapper issues to test here.
-    velo_dom::mount_to_id("app", app);
+    // The new mount() is fine for this check — no wrapper issues to test here.
+    mount(app);
 }

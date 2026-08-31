@@ -1,4 +1,4 @@
-use velo_dom::{DomNode, mount_to_id};
+use velo_dom::{DomNode, mount};
 use r#velo_macro::view;
 use velo_router::{FRouter, Link, Route, Router};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -80,5 +80,5 @@ pub fn run_app() {
         </div>
     };
 
-    mount_to_id("app", app_shell);
+    mount(app_shell);
 }

@@ -17,10 +17,14 @@ pub use velo_core::{
     create_effect_with_cleanup,
     create_memo,
     create_signal,
+    memo,
     provide_context,
+    signal,
+    signal_vec,
     use_context,
     with_context,
     ReadSignal,
+    RwSignal,
     Signal,
     SignalVec,
     WriteSignal,
@@ -42,10 +46,14 @@ pub mod prelude {
         create_effect_with_cleanup,
         create_memo,
         create_signal,
+        memo,
         provide_context,
+        signal,
+        signal_vec,
         use_context,
         with_context,
         ReadSignal,
+        RwSignal,
         Signal,
         SignalVec,
         WriteSignal,
@@ -56,7 +64,9 @@ pub mod prelude {
     pub use velo_dom::{signal_value, ViewValue};
 
     // Re-export primary DOM manipulation types and helpers
-    pub use velo_dom::{document, DomNode, RenderDynamic};
+    pub use velo_dom::{
+        document, mount, mount_at, mount_to_id, DomNode, RenderDynamic, RootHandle,
+    };
 
     // Re-export router structures
     pub use velo_router::{Link, Route, Router};

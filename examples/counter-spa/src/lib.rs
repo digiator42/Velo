@@ -1,6 +1,6 @@
 use r#velo_macro::view;
 use velo_core::create_signal;
-use velo_dom::{mount_to_id, DomNode};
+use velo_dom::{mount, DomNode};
 use velo_router::Link;
 use wasm_bindgen::prelude::*;
 mod components;
@@ -86,5 +86,5 @@ pub fn run_app() {
         </div>
     };
 
-    mount_to_id("app", app_shell);
+    mount(app_shell);
 }

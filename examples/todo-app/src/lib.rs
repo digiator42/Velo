@@ -1,5 +1,5 @@
 use velo::prelude::*;
-use velo_dom::mount_to_id;
+use velo_dom::mount;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::components::{AppState, Task, TaskRow};
@@ -156,5 +156,5 @@ pub fn run_app() {
         </div>
     };
 
-    mount_to_id("app", app_shell);
+    mount(app_shell);
 }
