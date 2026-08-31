@@ -6,8 +6,8 @@ language = "en"
 src = "src"
 
 [output.html]
-git-repository-url = "https://github.com/anomalyco/opencode"
-edit-url-template = "https://github.com/anomalyco/opencode"
+git-repository-url = "https://github.com/digiator42/Velo"
+edit-url-template = "https://github.com/digiator42/Velo/edit/main/{path}"
 site-url = "/"
 cname = ""
 mathjax-support = false
