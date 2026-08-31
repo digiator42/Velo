@@ -1,4 +1,4 @@
-use crate::components::MetricCard;
+use crate::components::{MetricCard, MetricCardProps};
 use velo::prelude::*;
 use web_sys::js_sys;
 

@@ -1,6 +1,9 @@
 # Component Props & Reactivity
 
-Components can accept static arguments, reactive signals, or shared models as properties.
+Components can accept static arguments, reactive signals, or shared models as properties. Props are
+**named**: `#[component]` generates a `<Name>Props` struct, and `view!` matches JSX attribute keys to
+the corresponding field names (in any order). The generated `NameProps` type must be in scope at the
+call site.
 
 ---
 

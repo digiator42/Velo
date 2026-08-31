@@ -426,53 +426,62 @@ impl ToTokens for VNode {
                     let component_ident = syn::Ident::new(tag_name, proc_macro2::Span::call_site());
                     let component_name = component_ident.to_string();
 
-                    // Check if a `children` prop is being passed in attributes (e.g. children={content})
-                    let mut children_attr_val: Option<TokenStream2> = None;
-                    let filtered_attrs: Vec<_> = attributes
-                        .iter()
-                        .filter(|attr| {
-                            if attr.key == "children" {
-                                children_attr_val = Some(quote! { #attr.value });
-                                false
-                            } else {
-                                true
+                    // `Show` is a built-in control-flow component implemented as a
+                    // plain positional fn: `Show(children, when, fallback)`.
+                    if component_name == "Show" {
+                        let mut when_val = quote! { false };
+                        let mut fallback_val = quote! { None };
+                        for attr in attributes {
+                            if attr.key == "when" {
+                                when_val = quote! { #attr.value };
+                            } else if attr.key == "fallback" {
+                                fallback_val = quote! { #attr.value };
                             }
-                        })
-                        .collect();
-
-                    let is_show = component_name == "Show";
-                    let is_suspense = component_name == "Suspense";
-
-                    let mut args = Vec::new();
-
-                    // For Show/Suspense: use named props (when: cond, fallback: node, children: {...})
-                    if is_show || is_suspense {
-                        for attr in &filtered_attrs {
-                            let key = &attr.key;
-                            let val = &attr.value;
-                            args.push(quote! { #key: #val });
                         }
                         let children_block = if !children.is_empty() {
-                            quote! { { #(#children)* } }
+                            quote! { vec![ #(#children),* ] }
                         } else {
-                            quote! { velo::DomNode::text("") }
+                            quote! { vec![] }
                         };
-                        args.push(quote! { children: #children_block });
-                    } else {
-                        // Regular component: positional args (the function signature determines order)
-                        for attr in &filtered_attrs {
+                        tokens.extend(quote! {
+                            #component_ident(#children_block, #when_val, #fallback_val)
+                        });
+                        return;
+                    }
+
+                    // All other components use a generated `<Name>Props` struct.
+                    // `#[component]` synthesizes `NameProps` with one field per
+                    // parameter, so attributes are matched BY NAME and may appear
+                    // in any order. Children (either nested nodes or a `children=`
+                    // attribute) map to the `children` field to support
+                    // `<Panel>{..}</Panel>` composition.
+                    let props_ident =
+                        syn::Ident::new(&format!("{}Props", component_name), proc_macro2::Span::call_site());
+
+                    let mut children_field: Option<TokenStream2> = None;
+                    let mut struct_fields: Vec<TokenStream2> = Vec::new();
+                    for attr in attributes {
+                        if attr.key == "children" {
+                            children_field = Some(quote! { #attr.value });
+                        } else {
+                            let key = syn::Ident::new(&attr.key, proc_macro2::Span::call_site());
                             let val = &attr.value;
-                            args.push(quote! { #val });
+                            struct_fields.push(quote! { #key: #val });
                         }
-                        if let Some(child_arg) = children_attr_val {
-                            args.push(child_arg);
-                        } else if !children.is_empty() {
-                            args.push(quote! { view! { #(#children)* } });
-                        }
+                    }
+                    let children_present = !children.is_empty();
+                    if children_present || children_field.is_some() {
+                        let children_expr = match children_field {
+                            Some(c) => c,
+                            None => quote! { vec![ #(#children),* ] },
+                        };
+                        struct_fields.push(quote! { children: #children_expr });
                     }
 
                     tokens.extend(quote! {
-                        #component_ident(#(#args),*)
+                        #component_ident(#props_ident {
+                            #(#struct_fields,)*
+                        })
                     });
                 } else {
                     let mut setup_statements = Vec::new();
@@ -616,11 +625,22 @@ pub fn view(input: TokenStream) -> TokenStream {
     }
 }
 
-/// `#[component]` turns a plain function into a Velo component.
+/// `#[component]` turns a plain function into a Velo component and converts it
+/// to the named-props form.
 ///
-/// It rewrites the function's return type to `velo::DomNode` so the body can
-/// end with a `view! { ... }` tail expression (no explicit `return` / `-> DomNode`
-/// needed). Component arguments are passed by the `view!` macro as usual.
+/// Velo components are callable with **named props** in any order. The macro
+/// rewrites the function so that:
+///
+/// 1. A `<Name>Props` struct is generated with one `pub` field per parameter.
+/// 2. The function now takes that struct as a single `props` argument and
+///    destructures it into the original parameter names.
+/// 3. The return type is rewritten to `velo::DomNode` so the body can end with
+///    a `view! { ... }` tail expression (no explicit `-> DomNode` needed).
+///
+/// The `view!` macro matches JSX attributes to the struct fields by name, so
+/// `<UserCard role="Admin" name="Ada" />` resolves correctly regardless of
+/// order. A special `children` field receives child nodes, enabling
+/// `<Panel>{..}</Panel>` composition.
 ///
 /// ```ignore
 /// #[velo::component]
@@ -639,30 +659,79 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(e) => return TokenStream::from(e.to_compile_error()),
     };
 
-    let props_type: Option<syn::Ident> = if !attr.is_empty() {
-        Some(syn::parse_macro_input!(attr as syn::Ident))
-    } else {
-        None
-    };
-
-    // If props struct is provided, ensure the function takes a single argument of that type
-        if let Some(_props_ty) = props_type {
-        if func.sig.inputs.len() != 1 {
-            return TokenStream::from(syn::Error::new_spanned(
-                &func.sig,
-                "Components with props struct must take exactly one argument of that type",
-            ).to_compile_error());
-        }
-        // Could also validate the type here if needed
+    if !attr.is_empty() {
+        return TokenStream::from(
+            syn::Error::new_spanned(
+                &func.sig.ident,
+                "Velo #[component] no longer takes a props-type argument: the <Name>Props struct is generated automatically from the parameter list",
+            )
+            .to_compile_error(),
+        );
     }
 
-    // Force the return type to DomNode
+    let fn_name = &func.sig.ident;
+    let props_ident = syn::Ident::new(&format!("{}Props", fn_name), proc_macro2::Span::call_site());
+
+    // Collect `(field_ident, field_type)` from each typed parameter.
+    let mut fields: Vec<(syn::Ident, syn::Type)> = Vec::new();
+    for input in &mut func.sig.inputs {
+        let arg = match input {
+            syn::FnArg::Typed(pt) => pt,
+            syn::FnArg::Receiver(_) => {
+                return TokenStream::from(
+                    syn::Error::new_spanned(input, "Velo #[component] cannot take a `self` receiver")
+                        .to_compile_error(),
+                );
+            }
+        };
+        let field_ident = match &*arg.pat {
+            syn::Pat::Ident(pi) => pi.ident.clone(),
+            _ => {
+                return TokenStream::from(
+                    syn::Error::new_spanned(
+                        arg,
+                        "Velo #[component] parameters must be plain named identifiers",
+                    )
+                    .to_compile_error(),
+                );
+            }
+        };
+        fields.push((field_ident, (*arg.ty).clone()));
+    }
+
+    let field_defs = fields.iter().map(|(id, ty)| quote! { pub #id: #ty });
+    let props_struct = quote! {
+        #[allow(non_snake_case)]
+        pub struct #props_ident {
+            #(#field_defs,)*
+        }
+    };
+
+    // Destructure props back into the original parameter names inside the body.
+    let field_names: Vec<_> = fields.iter().map(|(id, _)| id).collect();
+    let destructure: syn::Stmt = syn::parse_quote! {
+        let #props_ident { #(#field_names,)* } = props;
+    };
+
+    // Swap the parameter list for a single `props: <Name>Props` argument.
+    func.sig.inputs.clear();
+    func.sig.inputs.push(syn::parse_quote! { props: #props_ident });
+
+    // Prepend the destructure statement, keeping the existing body as-is.
+    let existing_stmts = std::mem::take(&mut func.block.stmts);
+    func.block.stmts.push(destructure);
+    func.block.stmts.extend(existing_stmts);
+
+    // Force the return type to DomNode.
     func.sig.output = syn::ReturnType::Type(
         Default::default(),
         Box::new(syn::parse_quote!(velo::DomNode)),
     );
 
-    TokenStream::from(quote! { #func })
+    TokenStream::from(quote! {
+        #props_struct
+        #func
+    })
 }
 
 /// Declarative macro for defining route tables.

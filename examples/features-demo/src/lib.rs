@@ -111,6 +111,21 @@ fn ThemeBadge() {
     }
 }
 
+/// A layout component that receives arbitrary **named children**.
+/// `#[component]` generates a `PanelProps { title, children }` struct, and the
+/// `view!` macro routes nested nodes into the `children` field, enabling
+/// `<Panel title="..">{ .. }</Panel>` composition.
+#[allow(non_snake_case)]
+#[component]
+fn Panel(title: String, children: Vec<DomNode>) {
+    view! {
+        <div class="panel">
+            <h3 class="panel-title">{ title.clone() }</h3>
+            <div class="panel-body">{ children }</div>
+        </div>
+    }
+}
+
 #[wasm_bindgen(start)]
 pub fn main() {
     run_app();
@@ -123,6 +138,10 @@ pub fn run_app() {
     let app_shell = view! {
         <div id="app-container">
             <h1>"Velo — new features demo"</h1>
+            <Panel title={ "Named props & children".to_string() }>
+                <p>"children passed by name"</p>
+                <ThemeBadge />
+            </Panel>
             { roster_page() }
             { theme_page() }
         </div>

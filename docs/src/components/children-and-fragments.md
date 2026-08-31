@@ -22,18 +22,31 @@ When appended to a parent element in the browser, the fragment unpacks its child
 
 ## 2. Component Composition with Children
 
-When an uppercase component tag contains child markup, the child nodes are passed directly to the component:
+When an uppercase component tag contains child markup, the child nodes are routed into a
+`children: Vec<DomNode>` parameter and passed to the component. This enables natural
+`<Panel>{ .. }</Panel>` composition:
 
 ```rust
 #[component]
-fn Card(header: String) {
+fn Panel(header: String, children: Vec<DomNode>) {
     view! {
-        <div class="card">
+        <div class="panel">
             <header><h3>{ header }</h3></header>
+            <div class="panel-body">{ children }</div>
         </div>
     }
 }
+
+// In a parent view — nested markup becomes the `children` prop:
+view! {
+    <Panel header="Account".into()>
+        <p>"Anything you put here is the Panel's children."</p>
+        <button on:click={ move |_| { /* ... */ } }>"Save"</button>
+    </Panel>
+}
 ```
+
+A `children={ expr }` attribute is also honored and takes precedence over nested markup.
 
 ---
 

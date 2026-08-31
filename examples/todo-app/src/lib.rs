@@ -1,7 +1,7 @@
 use velo::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::components::{AppState, Task, TaskRow};
+use crate::components::{AppState, Task, TaskRow, TaskRowProps};
 
 mod components;
 

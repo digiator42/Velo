@@ -1,6 +1,7 @@
 use velo::prelude::*;
 
 #[allow(non_snake_case)]
+#[component]
 pub fn MetricCard(
     title: String,
     value: Signal<i32>,

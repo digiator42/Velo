@@ -1,7 +1,7 @@
 use velo::prelude::*;
 use wasm_bindgen::prelude::*;
 mod components;
-use components::UserCard;
+use components::{UserCard, UserCardProps};
 
 fn home_page() -> DomNode {
     view! {

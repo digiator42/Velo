@@ -1533,10 +1533,17 @@ impl FRouter {
 }
 
 // =============================================================================
-// Ergonomic Router component for clean macro nesting: <Router>{ |path| ... }</Router>
+// Ergonomic Router component for clean macro nesting: <Router routes={...} />
 // =============================================================================
 #[allow(non_snake_case)]
-pub fn Router(routes: Vec<Route>) -> DomNode {
+pub struct RouterProps {
+    pub routes: Vec<Route>,
+}
+
+#[allow(non_snake_case)]
+pub fn Router(props: RouterProps) -> DomNode {
+    let RouterProps { routes } = props;
+
     static mut LISTENERS_INITIALIZED: bool = false;
     unsafe {
         if !LISTENERS_INITIALIZED {
@@ -1596,13 +1603,20 @@ pub fn Router(routes: Vec<Route>) -> DomNode {
     view_wrapper
 }
 
+/// Props for [`Link`]: `<Link to="..." label="..." />`.
+#[allow(non_snake_case)]
+pub struct LinkProps {
+    pub to: &'static str,
+    pub label: &'static str,
+}
+
 /// Ergonomic Link component that allows clean macro nesting: <Link to="...">Children</Link>
 #[allow(non_snake_case)]
-pub fn Link(to: &'static str, label: &'static str) -> DomNode {
+pub fn Link(props: LinkProps) -> DomNode {
+    let LinkProps { to, label } = props;
     let anchor = DomNode::element("a");
     anchor.reactive_attribute("href", move || to.to_string());
 
-    // Create a text node from your implementation and attach it
     let text_content = DomNode::text(label);
     anchor.append(&text_content);
 
@@ -1659,7 +1673,7 @@ pub mod prelude {
     };
 
     // Re-export router structures
-    pub use crate::{FRouter, Link, Route, Router};
+    pub use crate::{FRouter, Link, LinkProps, Route, Router, RouterProps};
 
     // Re-export the view! + #[component] + routes! procedural macros
     pub use crate::{component, routes, view};
