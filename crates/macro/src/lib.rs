@@ -529,12 +529,6 @@ pub fn routes(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Parse helper: `"/path" => component_fn`
-struct RouteEntry {
-    path: LitStr,
-    component: Ident,
-}
-
 /// Parse the full route list.
 struct RouteList(Vec<(LitStr, Ident)>);
 

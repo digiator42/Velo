@@ -1,0 +1,25 @@
+[book]
+title = "Velo Framework Guide"
+authors = ["Velo Team"]
+description = "Comprehensive guide and reference for Velo — the high-performance, fine-grained reactive Rust to WebAssembly SPA framework."
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/anomalyco/opencode"
+edit-url-template = "https://github.com/anomalyco/opencode"
+site-url = "/"
+cname = ""
+mathjax-support = false
+preferred-dark-theme = "ayu"
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
