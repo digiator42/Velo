@@ -1,8 +1,6 @@
 use velo::prelude::*;
 use velo_dom::mount_to_id;
 use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::JsCast;
-use web_sys::HtmlInputElement;
 
 use crate::components::{AppState, Task, TaskRow};
 
@@ -20,20 +18,17 @@ fn home_page() -> DomNode {
 
 fn tasks_page() -> DomNode {
     let state = use_context::<AppState>().expect("AppState must be provided at root");
-    let (input, set_input) = create_signal(String::new());
+    let input = signal(String::new());
 
-    // Handles for the "Add" and input handlers (move into closures safely).
     let s_add = state.clone();
-    let inp_read = input.clone();
-    let inp_write = set_input.clone();
 
     // Derived, reactive stats from the list (recompute only on change).
-    let total = create_memo({ let t = state.tasks.clone(); move || t.get().len() as u32 });
-    let open = create_memo({
+    let total = memo({ let t = state.tasks.clone(); move || t.get().len() as u32 });
+    let open = memo({
         let t = state.tasks.clone();
         move || t.get().iter().filter(|x| !x.done).count() as u32
     });
-    let done = create_memo({
+    let done = memo({
         let t = state.tasks.clone();
         move || t.get().iter().filter(|x| x.done).count() as u32
     });
@@ -48,22 +43,15 @@ fn tasks_page() -> DomNode {
                 <input
                     type="text"
                     placeholder="What needs doing?"
-                    value={ input.clone() }
-                    on:input={ move |e: web_sys::Event| {
-                        if let Some(target) = e.target() {
-                            if let Ok(el) = target.dyn_into::<HtmlInputElement>() {
-                                set_input.set(el.value());
-                            }
-                        }
-                    } }
+                    bind:value={ input }
                 />
                 <button on:click={ move |_| {
-                    let text = inp_read.get().trim().to_string();
+                    let text = input.get().trim().to_string();
                     if text.is_empty() { return; }
                     let next = s_add.tasks.get().iter().map(|t| t.id).max().unwrap_or(0) + 1;
                     s_add.tasks.push(Task { id: next, title: text, done: false });
-                    inp_write.set(String::new());
-                } }>"Add"</button>
+                    input.set(String::new());
+                }}>"Add"</button>
             </div>
 
             <div class="stats">
@@ -105,7 +93,7 @@ fn tasks_page() -> DomNode {
 fn stats_page() -> DomNode {
     let state = use_context::<AppState>().expect("AppState must be provided at root");
 
-    let open_titles = create_memo({
+    let open_titles = memo({
         let t = state.tasks.clone();
         move || t.get().iter().filter(|x| !x.done).map(|x| x.title.clone()).collect::<Vec<_>>()
     });
@@ -143,7 +131,7 @@ pub fn main() {
 pub fn run_app() {
     // Share the task list across all pages via context.
     provide_context(AppState {
-        tasks: SignalVec::new(vec![
+        tasks: signal_vec(vec![
             Task { id: 1, title: "Learn Velo's reactivity".into(), done: false },
             Task { id: 2, title: "Build a SPA".into(), done: true },
         ]),

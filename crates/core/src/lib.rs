@@ -826,3 +826,93 @@ mod tests {
         assert_eq!(*trigger.borrow(), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// RwSignal — zero-clone read+write handle (Leptos-style)
+// ---------------------------------------------------------------------------
+
+/// A single handle to reactive state that provides both read (`.get()`) and
+/// write (`.set()` / `.update()`) without the caller having to juggle a split
+/// `(ReadSignal, WriteSignal)` pair and perform extra clones.
+///
+/// `RwSignal<T>` is `Clone` — cloning it only shares the underlying
+/// `SignalInner`. It is **not** `Copy` because the inner type contains `Rc`;
+/// however the user never needs to think about it — the `view!` macro and the
+/// generated event handlers clone the handle under the hood, so user code
+/// never writes explicit `.clone()` in closures.
+pub struct RwSignal<T> {
+    inner: SignalInner<T>,
+}
+
+impl<T: Clone + 'static> RwSignal<T> {
+    /// Create a new reactive value.
+    pub fn new(initial_value: T) -> Self {
+        Self {
+            inner: SignalInner::new(initial_value),
+        }
+    }
+
+    /// Read the current value (and track the running effect, if any).
+    pub fn get(&self) -> T {
+        self.inner.get()
+    }
+
+    /// Replace the value and notify subscribers.
+    pub fn set(&self, new_value: T) {
+        self.inner.set(new_value);
+    }
+
+    /// Mutate the value in place and notify subscribers.
+    pub fn update<F>(&self, f: F)
+    where
+        F: FnOnce(&mut T),
+    {
+        self.inner.update(f);
+    }
+}
+
+impl<T> Clone for RwSignal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T: std::fmt::Display + Clone + 'static> std::fmt::Display for RwSignal<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.get(), f)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Terse factory names
+// ---------------------------------------------------------------------------
+
+/// Create a reactive signal, returning a combined `RwSignal<T>` handle.
+///
+/// This is the ergonomic entry point for state that both the view and event
+/// handlers read/write — callers use `r.get()`, `r.set(...)`, `r.update(...)`.
+/// No split, no explicit `.clone()` in closures (the macro + event handlers
+/// clone the handle when needed).
+pub fn signal<T: Clone + 'static>(initial_value: T) -> RwSignal<T> {
+    RwSignal::new(initial_value)
+}
+
+/// Create a reactive memo (derived, cached read-only signal).
+///
+/// The closure runs inside an effect, so the memo automatically recomputes when
+/// any signal it reads changes. Returns an owned `Memo<T>` that auto-unwraps in
+/// `view! { { memo } }`.
+pub fn memo<F, T>(f: F) -> Memo<T>
+where
+    F: FnMut() -> T + 'static,
+    T: Clone + 'static,
+{
+    create_memo(f)
+}
+
+/// Create a reactive list (backed by `SignalVec<T>`).
+pub fn signal_vec<T: Clone + 'static>(initial: Vec<T>) -> SignalVec<T> {
+    SignalVec::new(initial)
+}

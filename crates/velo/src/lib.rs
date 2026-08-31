@@ -5,6 +5,10 @@ pub use velo_dom as dom;
 pub use velo_macro as macro_internal;
 pub use velo_router as router;
 
+// Make velo_dom available as a crate path so the view! macro's generated
+// `velo_dom::` references resolve even when consumers only depend on `velo`.
+pub use velo_dom;
+
 // 2. Re-export the foundational items at the root level of the crate.
 //    This fixes the macro generation path error for `velo::create_effect`.
 pub use velo_core::{

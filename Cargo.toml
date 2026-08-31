@@ -8,6 +8,7 @@ members = [
     "examples/counter-spa", "examples/server-monitor-dashboard",
     "examples/features-demo",
     "examples/todo-app",
+    "examples/memo-unwrap-check",
 ]
 resolver = "2"
 

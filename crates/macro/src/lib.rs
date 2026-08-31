@@ -359,6 +359,65 @@ impl ToTokens for VNode {
                             setup_statements.push(quote! {
                                 parent_node.reactive_style(#prop, move || velo_dom::signal_value!(#val));
                             });
+                        } else if key.starts_with("bind:value") {
+                            // Two-way binding for text inputs, textareas, selects.
+                            // 1. Hook the "input" event: every keystroke reads the element
+                            //    and sets the signal so the signal tracks the DOM.
+                            // 2. Reactive forwarding: when the signal is set externally
+                            //    (e.g. clearing the field after "Add"), push it back to
+                            //    the element's value attribute.
+                            //
+                            // Evaluate (#val) once into a temporary, then clone that
+                            // temporary into each generated closure so there's no shared
+                            // variable that both closures try to move.
+                            let event_name_str: syn::LitStr = syn::parse_quote! { "input" };
+                            let field_name: syn::LitStr = syn::parse_quote! { "value" };
+                            setup_statements.push(quote! {
+                                let bind_node = parent_node.clone();
+                                let bind_expr = (#val);
+                                let bind_sig_1 = bind_expr.clone();
+                                let bind_sig_2 = bind_expr.clone();
+                                // Forward signal -> DOM (reactive value attribute).
+                                bind_node.reactive_attribute(#field_name, move || {
+                                    let v = velo_dom::signal_value!(bind_sig_1);
+                                    format!("{}", v)
+                                });
+                                // Forward DOM -> signal (on input, read element and set signal).
+                                bind_node.on(#event_name_str, move |e: web_sys::Event| {
+                                    use wasm_bindgen::JsCast;
+                                    let target = e.target().expect("bind:value event has no target");
+                                    let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:value requires an input/textarea/select element");
+                                    bind_sig_2.set(el.value());
+                                });
+                            });
+                        } else if key.starts_with("bind:checked") {
+                            // Two-way binding for checkboxes / radio buttons.
+                            // 1. Hook the "change" event: toggled checkbox writes its
+                            //    checked state back into the signal.
+                            // 2. Reactive forwarding: external signal changes push
+                            //    their state into the element's checked attribute.
+                            //
+                            // Evaluate (#val) once into a temporary, then clone that
+                            // temporary into each generated closure so there's no shared
+                            // variable that both closures try to move.
+                            let event_name_str: syn::LitStr = syn::parse_quote! { "change" };
+                            setup_statements.push(quote! {
+                                let bind_node = parent_node.clone();
+                                let bind_expr = (#val);
+                                let bind_sig_1 = bind_expr.clone();
+                                let bind_sig_2 = bind_expr.clone();
+                                // Forward signal -> DOM (reactive checked attribute).
+                                bind_node.reactive_attribute("checked", move || {
+                                    if velo_dom::signal_value!(bind_sig_1) { "checked" } else { "" }
+                                });
+                                // Forward DOM -> signal (on change, read checked and set signal).
+                                bind_node.on(#event_name_str, move |e: web_sys::Event| {
+                                    use wasm_bindgen::JsCast;
+                                    let target = e.target().expect("bind:checked event has no target");
+                                    let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:checked requires a checkbox/radio input");
+                                    bind_sig_2.set(el.checked());
+                                });
+                            });
                         } else if key == "disabled"
                             || key == "checked"
                             || key == "selected"

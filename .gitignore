@@ -22,3 +22,4 @@ target
 
 **/dist
 *.cargo
+.hermes/

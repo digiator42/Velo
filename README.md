@@ -66,7 +66,8 @@ let doubled = create_memo({
     let base = base.clone();
     move || base.get() * 2
 });
-// `doubled.get()` recomputes only when `base` changes.
+// `doubled` auto-unwraps in `view! { { doubled } }` (no `.get()` needed in the view).
+// In Rust code use `.get()` for the raw value (recomputes only when `base` changes).
 ```
 
 ### Effects

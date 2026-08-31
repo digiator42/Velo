@@ -83,6 +83,20 @@ impl<T: Clone + 'static> ViewValue for velo_core::Signal<T> {
     }
 }
 
+impl<T: Clone + 'static> ViewValue for velo_core::Memo<T> {
+    type Out = T;
+    fn view_value(&self) -> T {
+        self.get()
+    }
+}
+
+impl<T: Clone + 'static> ViewValue for velo_core::RwSignal<T> {
+    type Out = T;
+    fn view_value(&self) -> T {
+        self.get()
+    }
+}
+
 // Marker trait so plain RenderDynamic values can get a ViewValue blanket
 // impl without overlapping the `Signal`/`ReadSignal` impls above.
 pub trait PlainViewValue {}
@@ -289,7 +303,7 @@ impl DomNode {
         T: Clone + 'static,
         K: Eq + std::hash::Hash + Clone + 'static,
         FKey: Fn(&T) -> K + 'static,
-        FRender: Fn(&T) -> DomNode + 'static + Copy,
+        FRender: Fn(&T) -> DomNode + 'static + Clone,
     {
         use std::cell::RefCell;
         use std::collections::HashMap;
