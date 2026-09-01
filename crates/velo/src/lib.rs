@@ -12,9 +12,9 @@
 // Re-exports
 // =============================================================================
 
-/// The `view!`, `#[component]`, and `routes!` procedural macros (defined in the
-/// companion `velo_macro` package).
-pub use velo_macro::{component, routes, view};
+/// The `view!`, `#[component]`, `routes!`, and `#[route]` procedural macros
+/// (defined in the companion `velo_macro` package).
+pub use velo_macro::{component, route, routes, view};
 
 // =============================================================================
 // =============================================================================
@@ -72,12 +72,21 @@ fn register_effect(effect: &Rc<RefCell<Effect>>) {
 /// Mark an effect as disposed and run its cleanup (if any). Safe to call
 /// multiple times — only runs once.  **pub(crate)** — not part of the public API.
 pub(crate) fn dispose_effect(effect: &Rc<RefCell<Effect>>) {
-    let mut ef = effect.borrow_mut();
-    if !ef.disposed {
-        ef.disposed = true;
-        if let Some(cleanup) = ef.cleanup.take() {
-            cleanup();
+    // Take the cleanup callback out first, then release the borrow BEFORE
+    // invoking it. Running the cleanup while still holding `borrow_mut()` on
+    // the effect panics if the cleanup reads a signal (which re-enters the
+    // reactor via `mount_effect` -> `effect.borrow()` on this same effect).
+    let cleanup = {
+        let mut ef = effect.borrow_mut();
+        if !ef.disposed {
+            ef.disposed = true;
+            ef.cleanup.take()
+        } else {
+            None
         }
+    };
+    if let Some(cleanup) = cleanup {
+        cleanup();
     }
 }
 
@@ -749,6 +758,84 @@ pub fn signal_vec<T: Clone + 'static>(initial: Vec<T>) -> SignalVec<T> {
     SignalVec::new(initial)
 }
 
+// ---------------------------------------------------------------------------
+// Ergonomic macros — same underlying functions, friendlier call sites.
+// ---------------------------------------------------------------------------
+//
+// These are pure sugar: each one expands to exactly the function call it
+// names below. Nothing new happens at runtime; they exist so common state
+// setup reads as a short, memorable verb instead of a `create_*`/`*_context`
+// function name.
+
+/// `signal!(value)` — shorthand for [`signal`], creating a combined
+/// read+write `RwSignal<T>`.
+///
+/// ```ignore
+/// let count = signal!(0);
+/// count.set(1);
+/// ```
+///
+/// The split `(ReadSignal, WriteSignal)` pair is still available by calling
+/// [`create_signal`] directly for call sites that specifically want it.
+#[macro_export]
+macro_rules! signal {
+    ($value:expr) => {
+        $crate::signal($value)
+    };
+}
+
+/// `provide!(value)` — shorthand for [`provide_context`].
+///
+/// ```ignore
+/// provide!(AppConfig { theme: "dark" });
+/// ```
+#[macro_export]
+macro_rules! provide {
+    ($value:expr) => {
+        $crate::provide_context($value)
+    };
+}
+
+/// `context!()` — shorthand for [`use_context`] with the target type
+/// inferred from how the result is used. `context!(Type)` spells the type
+/// out explicitly (equivalent to `use_context::<Type>()`) when inference
+/// can't find it on its own.
+///
+/// ```ignore
+/// let config: Option<AppConfig> = context!();
+/// let config = context!(AppConfig);
+/// ```
+#[macro_export]
+macro_rules! context {
+    () => {
+        $crate::use_context()
+    };
+    ($ty:ty) => {
+        $crate::use_context::<$ty>()
+    };
+}
+
+/// `effect!(closure)` — shorthand for [`create_effect`].
+/// `effect!(closure, cleanup)` — shorthand for [`create_effect_with_cleanup`],
+/// running `cleanup` exactly once when the effect is disposed.
+///
+/// ```ignore
+/// effect!(move || log(count.get()));
+/// effect!(
+///     move || attach_listener(),
+///     move || detach_listener(),
+/// );
+/// ```
+#[macro_export]
+macro_rules! effect {
+    ($f:expr) => {
+        $crate::create_effect($f)
+    };
+    ($f:expr, $cleanup:expr) => {
+        $crate::create_effect_with_cleanup($f, $cleanup)
+    };
+}
+
 /// A reactive handle for async data.
 #[derive(Clone)]
 pub struct Resource<T: Clone + 'static> {
@@ -940,6 +1027,39 @@ impl DomNode {
         }
     }
 
+    /// Renders nothing. An alias for [`DomNode::fragment`] with zero
+    /// children — appending it inserts no nodes at all, which is what you
+    /// want for the "no-op" branch of a conditional render.
+    ///
+    /// Prefer this (or `view! { <></> }`, which expands to the same call)
+    /// over `DomNode::text("")`: a fragment with no children leaves nothing
+    /// behind in the DOM, whereas `text("")` still creates a real (empty)
+    /// text node.
+    ///
+    /// ```ignore
+    /// move || if details.get() {
+    ///     view! { <div class="details">"Secret details"</div> }
+    /// } else {
+    ///     DomNode::empty()
+    /// }
+    /// ```
+    pub fn empty() -> Self {
+        Self::fragment()
+    }
+
+    /// Creates a persistent element that renders its children as if transparent
+    /// (`display: contents`). Unlike a [`fragment`](DomNode::fragment), the
+    /// element does **not** empty itself when appended to a parent, so reactive
+    /// utilities can keep swapping children into it across effect runs.
+    pub fn display_contents() -> Self {
+        let el: Element = document().create_element("div").unwrap();
+        el.set_attribute("style", "display: contents")
+            .expect("Velo: Failed to set transparent container style");
+        Self {
+            raw_node: el.into(),
+        }
+    }
+
     /// Creates a static, un-changing text node
     pub fn text(content: &str) -> Self {
         let txt = document().create_text_node(content);
@@ -962,11 +1082,13 @@ impl DomNode {
         let txt_node = document().create_text_node("");
         let current_node = txt_node.clone();
 
-        // Establish the tracking wrapper loop
-        create_effect(move || {
+        // Establish the tracking wrapper loop. The effect is retained for the
+        // node's lifetime (leaked): dropping an `EffectHandle` disposes the
+        // effect, which would kill reactivity on the first update.
+        std::mem::forget(create_effect(move || {
             let evaluated_string = f();
             current_node.set_node_value(Some(&evaluated_string));
-        });
+        }));
 
         Self {
             raw_node: txt_node.into(),
@@ -993,11 +1115,11 @@ impl DomNode {
             .expect("Velo: Can only bind attributes to element nodes");
         let attr_name = name.to_string();
 
-        create_effect(move || {
+        std::mem::forget(create_effect(move || {
             let value = f();
             el.set_attribute(&attr_name, &value)
                 .expect("Velo: Failed to update element node attribute");
-        });
+        }));
     }
 
     /// Attaches an event listener directly to the browser element wrapper
@@ -1042,14 +1164,14 @@ impl DomNode {
             .expect("Velo: Can only toggle classes on element nodes");
         let class_name = class_name.to_string();
 
-        create_effect(move || {
+        std::mem::forget(create_effect(move || {
             let on = is_on();
             if on {
                 let _ = el.class_list().add_1(&class_name);
             } else {
                 let _ = el.class_list().remove_1(&class_name);
             }
-        });
+        }));
     }
 
     /// Binds a CSS inline style property reactively to a string value. Multiple
@@ -1071,8 +1193,9 @@ impl DomNode {
             std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
         let styles_c = std::rc::Rc::clone(&styles);
 
-        create_effect(move || {
+        std::mem::forget(create_effect(move || {
             let value = f();
+            web_sys::console::log_1(&format!("PROBE reactive_style value={:?}", value).into());
             styles_c.borrow_mut().insert(property.clone(), value);
 
             let css: String = styles_c
@@ -1082,7 +1205,8 @@ impl DomNode {
                 .collect::<Vec<_>>()
                 .join("; ");
             let _ = el.set_attribute("style", &css);
-        });
+            web_sys::console::log_1(&format!("PROBE reactive_style SET css={:?} connected={}", css, el.is_connected()).into());
+        }));
     }
 
     /// Mounts a keyed, fine-grained reactive list. On each change the reconciler
@@ -1119,7 +1243,9 @@ impl DomNode {
         let nodes_c = Rc::clone(&nodes);
         let order_c = Rc::clone(&order);
 
-        create_effect(move || {
+        // Retained (leaked) for the container's lifetime — dropping the handle
+        // disposes the effect and freezes the list at its initial render.
+        std::mem::forget(create_effect(move || {
             let items: Vec<T> = list.get();
             let new_keys: Vec<K> = items.iter().map(|it| key(it)).collect();
 
@@ -1137,20 +1263,31 @@ impl DomNode {
                 }
             }
 
-            // Build a lookup of new items by key for quick render.
+            // Build nodes only for keys we don't already have. Re-rendering
+            // every item on each mutation is wasteful: it re-runs (and leaks)
+            // the per-item reactive effects even when nothing changed, which
+            // degrades to quadratic time as the list grows.
             let mut by_key: HashMap<K, DomNode> = HashMap::new();
+            let existing_keys: std::collections::HashSet<K> =
+                nodes_c.borrow().keys().cloned().collect();
             for it in &items {
                 let k = key(it);
-                let node = render(it);
-                by_key.insert(k, node);
+                if !existing_keys.contains(&k) {
+                    let node = render(it);
+                    by_key.insert(k, node);
+                }
             }
 
             // Reconcile against previous order: insert/move each item before the
             // node that precedes it in the previous layout (or append at end).
             let prev = order_c.borrow().clone();
             for (idx, k) in new_keys.iter().enumerate() {
-                let node = match nodes_c.borrow_mut().get(k) {
-                    Some(existing) => existing.clone(),
+                // Avoid holding a RefCell borrow across the match: the scrutinee
+                // `borrow` temporary is dropped before the arm bodies run, so the
+                // `borrow_mut()` in the `None` arm can't double-borrow.
+                let existing = nodes_c.borrow().get(k).cloned();
+                let node = match existing {
+                    Some(existing) => existing,
                     None => {
                         let n = by_key.remove(k).expect("rendered node for key");
                         nodes_c.borrow_mut().insert(k.clone(), n.clone());
@@ -1175,7 +1312,7 @@ impl DomNode {
             }
 
             *order_c.borrow_mut() = new_keys;
-        });
+        }));
     }
 
     /// Accepts a closure from the macro, evaluates it inside an effect loop,
@@ -1185,18 +1322,22 @@ impl DomNode {
         F: FnMut() -> R + 'static,
         R: RenderDynamic + 'static,
     {
-        // Use a fragment as the container for dynamic expressions.
-        // Fragments are transparent containers that unpack into their parent.
-        let container = DomNode::fragment();
+        // Use a persistent element container for dynamic expressions. A
+        // DocumentFragment would be emptied into its parent on append, so later
+        // effect runs would write into a detached fragment and never appear.
+        // `display: contents` keeps the wrapper layout-transparent (like the old
+        // fragment) while staying attached so swaps are visible.
+        let container = DomNode::display_contents();
         let container_raw = container.raw_node.clone();
 
         let mut f_clone = move || f();
 
-        create_effect(move || {
+        // Retained (leaked) for the container's lifetime; see reactive_text.
+        std::mem::forget(create_effect(move || {
             let val: R = f_clone();
             let resolved_node = val.render_dynamic();
 
-            // Clear the existing content of the fragment.
+            // Clear the existing content of the container.
             while let Some(child) = container_raw.first_child() {
                 container_raw.remove_child(&child).unwrap();
             }
@@ -1204,13 +1345,46 @@ impl DomNode {
             container_raw
                 .append_child(&resolved_node.raw_node)
                 .expect("Velo: Failed to append dynamic expression variant");
-        });
+        }));
 
         container
     }
 }
 
-/// Mounts the root framework application element directly to a target DOM
+/// Reactive two-branch control flow backing `<Show>` / `<Suspense>`.
+///
+/// `content` and `fallback` are pre-built `DomNode` subtrees (each already
+/// internally reactive). This function shows whichever branch is active and
+/// swaps between them whenever the reactive `when` predicate flips — so an
+/// async resource's `loading` signal automatically swaps fallback <-> content
+/// without rebuilding children. Original JS nodes are moved in/out, which keeps
+/// any nested reactive expressions wired to the *same* live DOM nodes.
+pub fn reactive_switch<W>(mut when: W, content: DomNode, fallback: DomNode) -> DomNode
+where
+    W: FnMut() -> bool + 'static,
+{
+    // A persistent `display: contents` container: stays attached so the branch
+    // swap is visible on re-run (a DocumentFragment would empty on append).
+    let container = DomNode::display_contents();
+    let container_raw = container.raw_node.clone();
+    let content_raw = content.raw_node.clone();
+    let fallback_raw = fallback.raw_node.clone();
+
+    // Retained (leaked) for the fragment's lifetime; see reactive_text.
+    std::mem::forget(create_effect(move || {
+        while let Some(child) = container_raw.first_child() {
+            let _ = container_raw.remove_child(&child);
+        }
+        let active = if when() {
+            content_raw.clone()
+        } else {
+            fallback_raw.clone()
+        };
+        let _ = container_raw.append_child(&active);
+    }));
+
+    container
+}
 /// container ID.
 ///
 /// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
@@ -1253,11 +1427,9 @@ impl RootHandle {
 
 impl Drop for RootHandle {
     fn drop(&mut self) {
-        // Dispose any root-level effects here once effect-to-node tracking is
-        // in place. For now the DomNode Drop removes the node itself.
-        if let Some(parent) = self.root.raw_node.parent_node() {
-            let _ = parent.remove_child(&self.root.raw_node);
-        }
+        // Don't automatically unmount on drop - the node stays mounted in the DOM.
+        // User must explicitly call .unmount() to remove it.
+        // This allows `mount()` to be called without storing the handle.
     }
 }
 
@@ -1312,6 +1484,12 @@ pub fn mount_to_id_deprecated(id: &str, root_node: DomNode) {
         .expect("Velo: Failed to mount root node allocation to layout tree container target");
 }
 
+/// Static, non-reactive conditional rendering (direct API only).
+///
+/// The `view!` macro compiles `<Show>` / `<Suspense>` to [`reactive_switch`]
+/// instead, which swaps branches when the condition changes. This function is
+/// a plain one-shot helper for code that doesn't need reactivity.
+#[allow(non_snake_case)]
 pub fn Show(children: Vec<DomNode>, when: bool, fallback: Option<DomNode>) -> DomNode {
     if when {
         let frag = DomNode::fragment();
@@ -1461,6 +1639,47 @@ pub struct Route {
     pub component: fn() -> DomNode,
 }
 
+// =============================================================================
+// Compile-time route collection via `inventory`
+// =============================================================================
+
+/// Re-exported so the `#[route = "..."]` macro (in `velo_macro`) can emit
+/// `velo::inventory::submit! { .. }` without every consuming crate having to
+/// add `inventory` as its own direct dependency.
+pub use inventory;
+
+/// One statically-registered route. Every `#[route = "/path"]`-annotated
+/// function submits one of these at compile time; collect them all with
+/// [`collected_routes`] instead of hand-building a `Vec<Route>`.
+pub struct RouteRegistration {
+    pub path: &'static str,
+    pub component: fn() -> DomNode,
+}
+
+inventory::collect!(RouteRegistration);
+
+/// Gather every route registered via `#[route = "..."]` into a `Vec<Route>`,
+/// ready to hand to `<Router routes={collected_routes()} />` or
+/// `FRouter::new(...)`.
+///
+/// ```ignore
+/// #[route("/users/:id")]
+/// pub fn user_profile_page() {
+///     view! { <div>"User " { FRouter::param("id").unwrap_or_default() }</div> }
+/// }
+///
+/// // Instead of hand-writing the Vec<Route> list:
+/// mount(view! { <Router routes={collected_routes()} /> });
+/// ```
+pub fn collected_routes() -> Vec<Route> {
+    inventory::iter::<RouteRegistration>()
+        .map(|r| Route {
+            path: r.path,
+            component: r.component,
+        })
+        .collect()
+}
+
 /// Router structural component. Listens to path changes and morphs the core view.
 pub struct FRouter;
 
@@ -1482,7 +1701,7 @@ impl FRouter {
         let child_tracker = Rc::clone(&current_child);
 
         // This effect executes SURGICALLY only when the URL changes
-        create_effect(move || {
+        std::mem::forget(create_effect(move || {
             let path = CURRENT_PATH.with(|p| p.get());
 
             // Clean up previous view node from browser memory layout tree if it exists
@@ -1499,7 +1718,7 @@ impl FRouter {
 
             // Store reference to clean up on the next navigation cycle
             *child_tracker.borrow_mut() = Some(new_page_node);
-        });
+        }));
 
         view_wrapper
     }
@@ -1559,7 +1778,7 @@ pub fn Router(props: RouterProps) -> DomNode {
     let wrapper_raw = view_wrapper.raw_node.clone();
     let child_tracker = Rc::clone(&current_child);
 
-    create_effect(move || {
+    std::mem::forget(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
 
         if let Some(old_node) = child_tracker.borrow().as_ref() {
@@ -1598,7 +1817,7 @@ pub fn Router(props: RouterProps) -> DomNode {
             .expect("Velo Router: Failed to append target route content");
 
         *child_tracker.borrow_mut() = Some(matched_component);
-    });
+    }));
 
     view_wrapper
 }
@@ -1673,10 +1892,18 @@ pub mod prelude {
     };
 
     // Re-export router structures
-    pub use crate::{FRouter, Link, LinkProps, Route, Router, RouterProps};
+    pub use crate::{
+        collected_routes, FRouter, Link, LinkProps, Route, RouteRegistration, Router,
+        RouterProps,
+    };
 
-    // Re-export the view! + #[component] + routes! procedural macros
-    pub use crate::{component, routes, view};
+    // Re-export the view! + #[component] + routes! + #[route] procedural macros
+    pub use crate::{component, route, routes, view};
+
+    // Re-export the shorthand convenience macros. `signal!` shares its name with
+    // the `signal` value already re-exported above, so the macro rides along on
+    // that single import (macro + value namespaces are both covered by one use).
+    pub use crate::{context, effect, provide};
 
     // Re-export the built-in control-flow component `Show`.
     pub use crate::Show;

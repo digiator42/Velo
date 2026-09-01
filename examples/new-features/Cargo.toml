@@ -1,5 +1,5 @@
 [package]
-name = "features-demo"
+name = "new-features"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,4 @@ crate-type = ["cdylib"]
 [dependencies]
 velo = { path = "../../crates/velo" }
 wasm-bindgen = { workspace = true }
-wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true }
-gloo-timers = { version = "0.3", features = ["futures"] }
+console_error_panic_hook = "0.1"

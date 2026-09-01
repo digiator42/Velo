@@ -426,25 +426,52 @@ impl ToTokens for VNode {
                     let component_ident = syn::Ident::new(tag_name, proc_macro2::Span::call_site());
                     let component_name = component_ident.to_string();
 
-                    // `Show` is a built-in control-flow component implemented as a
-                    // plain positional fn: `Show(children, when, fallback)`.
-                    if component_name == "Show" {
+                    // `Show` and `Suspense` are reactive control-flow components.
+                    //
+                    // Unlike ordinary components (whose children are built once at
+                    // view!-construction time), these react to a boolean condition
+                    // (an async resource's `loading`) and swap between a fallback
+                    // and the content:
+                    //   <Show when={ !r.loading() } fallback={...}>{ ... }</Show>
+                    //   <Suspense loading={ r.loading() } fallback={...}>{ ... }</Suspense>
+                    //
+                    // Both branches are built ONCE (children are independently
+                    // reactive via their own render_expression effects), then
+                    // `reactive_switch` moves whichever branch is active into a
+                    // fragment, swapping live when the condition flips.
+                    if component_name == "Show" || component_name == "Suspense" {
                         let mut when_val = quote! { false };
-                        let mut fallback_val = quote! { None };
+                        let mut fallback_val = quote! { velo::DomNode::text("") };
                         for attr in attributes {
-                            if attr.key == "when" {
-                                when_val = quote! { #attr.value };
+                            if attr.key == "when" || attr.key == "loading" {
+                                let v = &attr.value;
+                                when_val = quote! { #v };
                             } else if attr.key == "fallback" {
-                                fallback_val = quote! { #attr.value };
+                                let v = &attr.value;
+                                fallback_val = quote! { #v };
                             }
                         }
-                        let children_block = if !children.is_empty() {
-                            quote! { vec![ #(#children),* ] }
+                        let content_block = quote! {
+                            {
+                                let __velo_cf_frag = velo::DomNode::fragment();
+                                #( __velo_cf_frag.append(&#children); )*
+                                __velo_cf_frag
+                            }
+                        };
+                        // `Show` shows content when `when` is truthy. `Suspense`'s
+                        // `loading` predicate is inverted: content is shown once the
+                        // resource is DONE loading, fallback while still loading.
+                        let predicate = if component_name == "Suspense" {
+                            quote! { !#when_val }
                         } else {
-                            quote! { vec![] }
+                            quote! { #when_val }
                         };
                         tokens.extend(quote! {
-                            #component_ident(#children_block, #when_val, #fallback_val)
+                            velo::reactive_switch(
+                                move || #predicate,
+                                #content_block,
+                                #fallback_val,
+                            )
                         });
                         return;
                     }
@@ -619,10 +646,8 @@ impl ToTokens for VNode {
 
 #[proc_macro]
 pub fn view(input: TokenStream) -> TokenStream {
-    match syn::parse::<VNode>(input) {
-        Ok(parsed_root) => TokenStream::from(parsed_root.to_token_stream()),
-        Err(err) => TokenStream::from(err.to_compile_error()),
-    }
+    let parsed_root = parse_macro_input!(input as VNode);
+    TokenStream::from(parsed_root.to_token_stream())
 }
 
 /// `#[component]` turns a plain function into a Velo component and converts it
@@ -777,4 +802,36 @@ impl syn::parse::Parse for RouteList {
         }
         Ok(RouteList(entries))
     }
+}
+
+#[proc_macro_attribute]
+pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Invoke as `#[route("/path")]`. For a `#[attr(...)]` proc-macro attribute,
+    // rustc hands the macro only the tokens *inside* the parens, so `attr` is
+    // just the path literal (no parentheses, no `=`).
+    struct RouteAttr(syn::LitStr);
+    impl syn::parse::Parse for RouteAttr {
+        fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+            Ok(RouteAttr(input.parse()?))
+        }
+    }
+    let RouteAttr(path_lit) = parse_macro_input!(attr as RouteAttr);
+    let mut func = match syn::parse::<syn::ItemFn>(item) {
+        Ok(f) => f,
+        Err(e) => return TokenStream::from(e.to_compile_error()),
+    };
+    if !func.sig.inputs.is_empty() {
+        return TokenStream::from(syn::Error::new_spanned(
+            &func.sig.inputs,
+            "Velo: #[route] components take no arguments — read params via FRouter::use_param",
+        ).to_compile_error());
+    }
+    func.sig.output = syn::ReturnType::Type(Default::default(), Box::new(syn::parse_quote!(velo::DomNode)));
+    let fn_ident = func.sig.ident.clone();
+    TokenStream::from(quote! {
+        #func
+        velo::inventory::submit! {
+            velo::RouteRegistration { path: #path_lit, component: #fn_ident }
+        }
+    })
 }
