@@ -115,6 +115,20 @@ fn try_parse_reactive_arrow(input: ParseStream) -> Option<Expr> {
     }
 }
 
+/// In reactive prop positions (`when=`, `style:`, `class:active=`, generic
+/// attribute `x={ .. }`) the macro feeds the value through `signal_value!` so a
+/// raw `RwSignal<bool>` / `Memo<_>` auto-unwraps. A user-supplied reactive
+/// *closure* (`when={ move || bool }`) has no `ViewValue` impl and must instead
+/// be CALLED on each effect run. Returns the token stream that evaluates `v` to
+/// its current value either way.
+fn reactive_value(v: &syn::Expr) -> proc_macro2::TokenStream {
+    if matches!(v, syn::Expr::Closure(_)) {
+        quote! { (#v)() }
+    } else {
+        quote! { velo::signal_value!(#v) }
+    }
+}
+
 enum VNode {
     Element {
         tag_name: String,
@@ -465,16 +479,11 @@ impl ToTokens for VNode {
                     // `reactive_switch` moves whichever branch is active into a
                     // fragment, swapping live when the condition flips.
                     if component_name == "Show" || component_name == "Suspense" {
-                        let mut when_val = quote! { false };
+                        let mut when_expr: Option<&syn::Expr> = None;
                         let mut fallback_val = quote! { velo::DomNode::text("") };
                         for attr in attributes {
                             if attr.key == "when" || attr.key == "loading" {
-                                let v = &attr.value;
-                                // Auto-unwrap via `signal_value!` so a raw signal
-                                // (`when={ show_card }`) works as the condition;
-                                // plain bool expressions pass through the
-                                // `ViewValue` blanket unchanged.
-                                when_val = quote! { velo::signal_value!(#v) };
+                                when_expr = Some(&attr.value);
                             } else if attr.key == "fallback" {
                                 let v = &attr.value;
                                 fallback_val = quote! { #v };
@@ -490,14 +499,43 @@ impl ToTokens for VNode {
                         // `Show` shows content when `when` is truthy. `Suspense`'s
                         // `loading` predicate is inverted: content is shown once the
                         // resource is DONE loading, fallback while still loading.
-                        let predicate = if component_name == "Suspense" {
-                            quote! { !#when_val }
-                        } else {
-                            quote! { #when_val }
+                        let predicate = match when_expr {
+                            // Reactive predicate closure (`when={ move || bool }`):
+                            // bind it once (its move-captured environment would
+                            // otherwise be re-moved on every call), then invoke /
+                            // invert it per effect run.
+                            Some(v) if matches!(v, syn::Expr::Closure(_)) => {
+                                let neg = if component_name == "Suspense" {
+                                    quote! { ! }
+                                } else {
+                                    quote! {}
+                                };
+                                quote! { { let __velo_when = #v; move || #neg __velo_when() } }
+                            }
+                            // Any other value (signal, memo, plain bool): auto-unwrap
+                            // via `signal_value!` inside a fresh tracked closure.
+                            Some(v) => {
+                                let when_val = reactive_value(v);
+                                let neg = if component_name == "Suspense" {
+                                    quote! { ! }
+                                } else {
+                                    quote! {}
+                                };
+                                quote! { move || #neg #when_val }
+                            }
+                            // No `when`/`loading` given: Show collapsed, Suspense shows
+                            // content (loading is done).
+                            None => {
+                                if component_name == "Suspense" {
+                                    quote! { move || !false }
+                                } else {
+                                    quote! { move || false }
+                                }
+                            }
                         };
                         tokens.extend(quote! {
                             velo::reactive_switch(
-                                move || #predicate,
+                                #predicate,
                                 #content_block,
                                 #fallback_val,
                             )
@@ -600,7 +638,20 @@ impl ToTokens for VNode {
                         let key = &attr.key;
                         let val = &attr.value;
 
-                        if key.starts_with("on:") {
+                        if key == "on:submit" {
+                            // Form submit sugar: calls `prevent_default()` (so the
+                            // WASM app handles the action instead of the browser
+                            // reloading/navigating) and forwards the event on.
+                            // Bound to a local first: calling a closure literal
+                            // directly (`#val(e)`) misparses at the `{...}(e)`.
+                            setup_statements.push(quote! {
+                                let submit_handler = #val;
+                                parent_node.on("submit", move |e: web_sys::Event| {
+                                    e.prevent_default();
+                                    submit_handler(e)
+                                });
+                            });
+                        } else if key.starts_with("on:") {
                             let event_type = key.strip_prefix("on:").unwrap();
                             setup_statements.push(quote! {
                                 parent_node.on(#event_type, #val);
@@ -615,8 +666,9 @@ impl ToTokens for VNode {
                         } else if key.starts_with("style:") {
                             // Reactive inline style: style:color={ color }
                             let prop = key.strip_prefix("style:").unwrap().to_string();
+                            let rv = reactive_value(val);
                             setup_statements.push(quote! {
-                                parent_node.reactive_style(#prop, move || velo::signal_value!(#val));
+                                parent_node.reactive_style(#prop, move || #rv);
                             });
                         } else if key.starts_with("bind:value") {
                             // Two-way binding for text inputs, textareas, selects.
@@ -725,8 +777,9 @@ impl ToTokens for VNode {
                             });
                         });
                         } else {
+                            let rv = reactive_value(val);
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute(#key, move || format!("{}", velo::signal_value!(#val)));
+                                parent_node.reactive_attribute(#key, move || format!("{}", #rv));
                             });
                         }
                     }
@@ -753,8 +806,9 @@ impl ToTokens for VNode {
                             .iter()
                             .map(|(name, val)| {
                                 let name_lit = syn::LitStr::new(name, proc_macro2::Span::call_site());
+                                let rv = reactive_value(val);
                                 quote! {
-                                    (#name_lit, Box::new(move || velo::signal_value!(#val)) as Box<dyn FnMut() -> bool + 'static>),
+                                    (#name_lit, Box::new(move || #rv) as Box<dyn FnMut() -> bool + 'static>),
                                 }
                             })
                             .collect();
@@ -764,14 +818,16 @@ impl ToTokens for VNode {
                         });
 
                         for rb in reactive_base {
+                            let rv = reactive_value(rb);
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute("class", move || format!("{}", velo::signal_value!(#rb)));
+                                parent_node.reactive_attribute("class", move || format!("{}", #rv));
                             });
                         }
                     } else {
                         for base in base_classes {
+                            let rv = reactive_value(base);
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute("class", move || format!("{}", velo::signal_value!(#base)));
+                                parent_node.reactive_attribute("class", move || format!("{}", #rv));
                             });
                         }
                     }

@@ -34,7 +34,7 @@ pub fn profile_page() -> DomNode {
                 "Toggle User Preview Card"
             </button>
 
-            <button on:click={ () => user_name.set("Alice".to_string()) }>
+            <button on:click={ async () => user_name.set("Alice".to_string()) }>
                 "Change Name"
             </button>
 

@@ -17,6 +17,9 @@ fn home_page() -> DomNode {
 
 fn tasks_page() -> DomNode {
     let state = use_context::<AppState>().expect("AppState must be provided at root");
+    // `bind:value` treats this as a controlled input: typing writes the signal,
+    // and resetting the signal below (after "Add") writes back to the live DOM
+    // property, so the field clears even though we never touched the element.
     let input = signal(String::new());
 
     let s_add = state.clone();
@@ -39,32 +42,35 @@ fn tasks_page() -> DomNode {
             <h1>"Tasks"</h1>
 
             <div class="adder">
-                <input
-                    type="text"
-                    placeholder="What needs doing?"
-                    bind:value={ input }
-                />
-                <button on:click={ move |_| {
+                <form on:submit={ () => {
                     let text = input.get().trim().to_string();
                     if text.is_empty() { return; }
                     let next = s_add.tasks.get().iter().map(|t| t.id).max().unwrap_or(0) + 1;
                     s_add.tasks.push(Task { id: next, title: text, done: false });
+                    // Controlled reset: bind:value pushes this back to the input.
                     input.set(String::new());
-                }}>"Add"</button>
+                } }>
+                    <input
+                        type="text"
+                        placeholder="What needs doing?"
+                        bind:value={ input }
+                    />
+                    <button type="submit">"Add"</button>
+                </form>
             </div>
 
             <div class="stats">
                 <div class="stat-card">
                     <div class="label">"Total"</div>
-                    <div class="value">{ total.get() }</div>
+                    <div class="value">{ total }</div>
                 </div>
                 <div class="stat-card">
                     <div class="label">"Open"</div>
-                    <div class="value">{ open.get() }</div>
+                    <div class="value">{ open }</div>
                 </div>
                 <div class="stat-card">
                     <div class="label">"Done"</div>
-                    <div class="value">{ done.get() }</div>
+                    <div class="value">{ done }</div>
                 </div>
             </div>
 
@@ -76,15 +82,11 @@ fn tasks_page() -> DomNode {
                 }
             </div>
 
-            {
-                move || {
-                    if state.tasks.get().is_empty() {
-                        DomNode::text("No tasks yet — add one above.")
-                    } else {
-                        DomNode::text("")
-                    }
-                }
-            }
+            <Show when={ move || state.tasks.get().is_empty() } fallback={ DomNode::text("") }>
+                <div class="empty-state">
+                    <p>"No tasks yet — add one above."</p>
+                </div>
+            </Show>
         </div>
     }
 }
