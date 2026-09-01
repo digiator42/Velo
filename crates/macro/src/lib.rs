@@ -517,6 +517,14 @@ impl ToTokens for VNode {
                         let parent_node = velo::DomNode::element(#tag_name);
                     });
 
+                    // Collect every class-related attribute so we can coordinate them
+                    // through a single `reactive_classes` call. `class:name={ bool }`
+                    // bindings and a plain `class="..."` both write the same `class`
+                    // attribute; coordinating them in one registry is what stops them
+                    // from clobbering each other.
+                    let mut base_classes: Vec<&syn::Expr> = Vec::new();
+                    let mut toggle_classes: Vec<(String, &syn::Expr)> = Vec::new();
+
                     for attr in attributes {
                         let key = &attr.key;
                         let val = &attr.value;
@@ -529,9 +537,10 @@ impl ToTokens for VNode {
                         } else if key.starts_with("class:") {
                             // Reactive class toggle: class:active={ is_on }
                             let class_name = key.strip_prefix("class:").unwrap().to_string();
-                            setup_statements.push(quote! {
-                                parent_node.toggle_class(#class_name, move || velo::signal_value!(#val));
-                            });
+                            toggle_classes.push((class_name, val));
+                        } else if key == "class" {
+                            // Plain class="..." attribute: gathered with any toggles.
+                            base_classes.push(val);
                         } else if key.starts_with("style:") {
                             // Reactive inline style: style:color={ color }
                             let prop = key.strip_prefix("style:").unwrap().to_string();
@@ -622,6 +631,51 @@ impl ToTokens for VNode {
                         } else {
                             setup_statements.push(quote! {
                                 parent_node.reactive_attribute(#key, move || format!("{}", velo::signal_value!(#val)));
+                            });
+                        }
+                    }
+
+                    // Coordinate class attributes gathered above. When the element
+                    // carries any `class:` toggle, fold the whole class set into a
+                    // single `reactive_classes` call (shared registry) so the base
+                    // `class="..."` and the toggled classes stop overwriting one
+                    // another. Static string-literal bases join the base; reactive
+                    // `class={...}` expressions still use reactive_attribute.
+                    if !toggle_classes.is_empty() {
+                        let mut static_base: Vec<String> = Vec::new();
+                        let mut reactive_base: Vec<&syn::Expr> = Vec::new();
+                        for base in &base_classes {
+                            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = base {
+                                static_base.push(s.value());
+                            } else {
+                                reactive_base.push(base);
+                            }
+                        }
+                        let base_static = static_base.join(" ");
+
+                        let toggle_calls: Vec<proc_macro2::TokenStream> = toggle_classes
+                            .iter()
+                            .map(|(name, val)| {
+                                let name_lit = syn::LitStr::new(name, proc_macro2::Span::call_site());
+                                quote! {
+                                    (#name_lit, Box::new(move || velo::signal_value!(#val)) as Box<dyn FnMut() -> bool + 'static>),
+                                }
+                            })
+                            .collect();
+
+                        setup_statements.push(quote! {
+                            parent_node.reactive_classes(#base_static, vec![ #(#toggle_calls)* ]);
+                        });
+
+                        for rb in reactive_base {
+                            setup_statements.push(quote! {
+                                parent_node.reactive_attribute("class", move || format!("{}", velo::signal_value!(#rb)));
+                            });
+                        }
+                    } else {
+                        for base in base_classes {
+                            setup_statements.push(quote! {
+                                parent_node.reactive_attribute("class", move || format!("{}", velo::signal_value!(#base)));
                             });
                         }
                     }

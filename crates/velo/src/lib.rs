@@ -1174,6 +1174,79 @@ impl DomNode {
         }));
     }
 
+    /// Applies a static base class plus a set of reactively-toggled classes,
+    /// coordinating every writer through one shared registry so they don't
+    /// clobber each other.
+    ///
+    /// This is what the `view!` macro emits for an element that carries both a
+    /// plain `class="..."` and one or more `class:name={ signal }` bindings. A
+    /// naive approach writes each via a separate effect (`classList.add/remove`
+    /// for toggles, `setAttribute("class", ...)` for the base) — and those two
+    /// write the *same* `class` property, so whichever effect re-runs last
+    /// wipes the other's classes. Here every contributor records into a single
+    /// `Rc<RefCell<BTreeMap<name, bool>>>`, and any change rebuilds the full
+    /// `className` from that map, so the base and all toggles always coexist.
+    pub fn reactive_classes(
+        &self,
+        base: &str,
+        toggles: Vec<(&'static str, Box<dyn FnMut() -> bool + 'static>)>,
+    ) {
+        use std::cell::RefCell;
+        use std::collections::BTreeMap;
+        use std::rc::Rc;
+        use wasm_bindgen::JsCast;
+
+        let el: Element = self
+            .raw_node
+            .clone()
+            .dyn_into()
+            .expect("Velo: reactive_classes can only apply to element nodes");
+
+        // Registry shared by every contributor. `order` fixes the class order
+        // so the rebuilt className is deterministic (base first, then toggles
+        // in declaration order).
+        let state: Rc<RefCell<BTreeMap<String, bool>>> =
+            Rc::new(RefCell::new(BTreeMap::new()));
+        let mut order: Vec<String> = base.split_whitespace().map(str::to_string).collect();
+        for (name, _) in &toggles {
+            order.push((*name).to_string());
+        }
+
+        // Base classes are always on.
+        {
+            let mut st = state.borrow_mut();
+            for c in &order {
+                st.insert(c.clone(), true);
+            }
+        }
+
+        let apply_state = Rc::clone(&state);
+        let apply_order = order;
+        let apply_el = el.clone();
+        let apply = move || {
+            let st = apply_state.borrow();
+            let joined = apply_order
+                .iter()
+                .filter(|c| st.get(c.as_str()).copied().unwrap_or(false))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = apply_el.set_class_name(&joined);
+        };
+        apply();
+
+        for (name, mut is_on) in toggles {
+            let name = name.to_string();
+            let toggle_state = Rc::clone(&state);
+            let toggle_apply = apply.clone();
+            std::mem::forget(create_effect(move || {
+                let on = is_on();
+                toggle_state.borrow_mut().insert(name.clone(), on);
+                toggle_apply();
+            }));
+        }
+    }
+
     /// Binds a CSS inline style property reactively to a string value. Multiple
     /// `reactive_style` calls on the same element are merged (each keeps its own
     /// property) by accumulating into the element's `style` attribute.
