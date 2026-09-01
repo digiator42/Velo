@@ -10,3 +10,4 @@ crate-type = ["cdylib"]
 velo = { path = "../../crates/velo" }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }
+console_error_panic_hook = "0.1"

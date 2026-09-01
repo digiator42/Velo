@@ -21,7 +21,7 @@ fn counter_page() -> DomNode {
             <h2>"Counter (event-handler arrow sugar)"</h2>
 
             // `() => { .. }` -> `move |_evt: web_sys::Event| { .. }`
-            <button on:click={ () => { inc.update(|c| *c += 1); } }>
+            <button on:click={ async () => { inc.update(|c| *c += 1); } }>
                 "Increment"
             </button>
 

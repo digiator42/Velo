@@ -125,31 +125,58 @@ pub(crate) fn flush_effects() {
 }
 
 // ---------------------------------------------------------------------------
-// SignalInner — the shared reactive cell backing every signal handle.
+// SignalEngine / SignalInner — the shared reactive cell behind every signal handle.
 // ---------------------------------------------------------------------------
 
+/// The heap-allocated reactive cell behind every signal handle: the current
+/// value plus the list of effects currently subscribed to it.
+pub(crate) struct SignalEngine<T> {
+    value: RefCell<T>,
+    subscribers: RefCell<Vec<Rc<RefCell<Effect>>>>,
+}
+
+/// A `Copy` shared handle to a [`SignalEngine`].
+///
+/// `Copy` and `Drop` are mutually exclusive in Rust, so the engine can never be
+/// reference-counted back down to nothing. It is therefore deliberately
+/// retained for the lifetime of the app — exactly like the effects that
+/// `reactive_text` / `reactive_switch` `mem::forget`. That is the price of
+/// zero-`.clone()` ergonomics: `move ||` and `async move { .. }` handlers
+/// capture the handle by value over and over, and `Copy` lets them share it
+/// without cloning.
 pub(crate) struct SignalInner<T> {
-    value: Rc<RefCell<T>>,
-    subscribers: Rc<RefCell<Vec<Rc<RefCell<Effect>>>>>,
+    ptr: *const SignalEngine<T>,
+}
+
+impl<T> SignalInner<T> {
+    fn new(initial_value: T) -> Self {
+        let engine = Box::new(SignalEngine {
+            value: RefCell::new(initial_value),
+            subscribers: RefCell::new(Vec::new()),
+        });
+        // Intentionally leaked: retained for the app's lifetime, see struct docs.
+        Self {
+            ptr: Box::into_raw(engine),
+        }
+    }
+
+    /// Access the engine the handle points into.
+    fn engine(&self) -> &SignalEngine<T> {
+        // `ptr` is set once by `new` from a `Box` that is never freed, so it
+        // always points at a live `SignalEngine` for the lifetime of the handle.
+        unsafe { &*self.ptr }
+    }
 }
 
 impl<T> Clone for SignalInner<T> {
     fn clone(&self) -> Self {
-        Self {
-            value: Rc::clone(&self.value),
-            subscribers: Rc::clone(&self.subscribers),
-        }
+        *self
     }
 }
 
-impl<T: Clone + 'static> SignalInner<T> {
-    fn new(initial_value: T) -> Self {
-        Self {
-            value: Rc::new(RefCell::new(initial_value)),
-            subscribers: Rc::new(RefCell::new(Vec::new())),
-        }
-    }
+impl<T> Copy for SignalInner<T> {}
 
+impl<T: Clone + 'static> SignalInner<T> {
     /// Read the value and, if an effect is running, subscribe it.
     fn get(&self) -> T {
         ACTIVE_EFFECT_ID.with(|active_id| {
@@ -165,11 +192,11 @@ impl<T: Clone + 'static> SignalInner<T> {
                 });
             }
         });
-        self.value.borrow().clone()
+        self.engine().value.borrow().clone()
     }
 
     fn set(&self, new_value: T) {
-        *self.value.borrow_mut() = new_value;
+        *self.engine().value.borrow_mut() = new_value;
         self.notify();
     }
 
@@ -177,7 +204,7 @@ impl<T: Clone + 'static> SignalInner<T> {
     where
         F: FnOnce(&mut T),
     {
-        f(&mut *self.value.borrow_mut());
+        f(&mut *self.engine().value.borrow_mut());
         self.notify();
     }
 
@@ -187,7 +214,7 @@ impl<T: Clone + 'static> SignalInner<T> {
     /// accumulated in `PENDING_EFFECTS` and only flushed when the outermost
     /// `batch()` exits. Otherwise they are flushed immediately.
     fn notify(&self) {
-        let subs = self.subscribers.borrow().clone();
+        let subs = self.engine().subscribers.borrow().clone();
         let mut added: HashSet<EffectId> = HashSet::new();
         let mut to_queue: Vec<Rc<RefCell<Effect>>> = Vec::new();
 
@@ -218,7 +245,7 @@ impl<T: Clone + 'static> SignalInner<T> {
     }
 
     fn mount_effect(&self, effect: &Rc<RefCell<Effect>>) {
-        let mut subs = self.subscribers.borrow_mut();
+        let mut subs = self.engine().subscribers.borrow_mut();
         if !subs.iter().any(|s| s.borrow().id == effect.borrow().id) {
             subs.push(Rc::clone(effect));
         }
@@ -250,6 +277,12 @@ impl<T> Clone for ReadSignal<T> {
     }
 }
 
+// Read-only handles are thin `Copy` shared handles over `SignalInner` (a
+// pointer into a leaked `SignalEngine`). This lets them move freely into
+// `move ||` closures and `async () => { .. }` futures without `.clone()`
+// boilerplate.
+impl<T> Copy for ReadSignal<T> {}
+
 /// Write-only handle used to update a reactive value.
 pub struct WriteSignal<T> {
     inner: SignalInner<T>,
@@ -277,6 +310,8 @@ impl<T> Clone for WriteSignal<T> {
         }
     }
 }
+
+impl<T> Copy for WriteSignal<T> {}
 
 /// A combined read+write handle. Kept for ergonomic single-variable state
 /// and for cases (like the router) that need one object to both read and write.
@@ -338,6 +373,8 @@ impl<T> Clone for Signal<T> {
         }
     }
 }
+
+impl<T> Copy for Signal<T> {}
 
 // ---------------------------------------------------------------------------
 // Effect construction
@@ -676,11 +713,10 @@ pub fn create_signal<T: Clone + 'static>(initial_value: T) -> (ReadSignal<T>, Wr
 /// write (`.set()` / `.update()`) without the caller having to juggle a split
 /// `(ReadSignal, WriteSignal)` pair and perform extra clones.
 ///
-/// `RwSignal<T>` is `Clone` — cloning it only shares the underlying
-/// `SignalInner`. It is **not** `Copy` because the inner type contains `Rc`;
-/// however the user never needs to think about it — the `view!` macro and the
-/// generated event handlers clone the handle under the hood, so user code
-/// never writes explicit `.clone()` in closures.
+/// `RwSignal<T>` is `Copy` — it is a thin pointer into a leaked
+/// `SignalEngine`, so it can be captured freely by `move ||` and
+/// `async move` closures without `.clone()` boilerplate (see `SignalInner`
+/// for why the engine is retained).
 pub struct RwSignal<T> {
     inner: SignalInner<T>,
 }
@@ -719,6 +755,8 @@ impl<T> Clone for RwSignal<T> {
         }
     }
 }
+
+impl<T> Copy for RwSignal<T> {}
 
 impl<T: std::fmt::Display + Clone + 'static> std::fmt::Display for RwSignal<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -873,6 +911,27 @@ where
     });
 
     Resource { loading, value }
+}
+
+/// Sleep asynchronously for `ms` milliseconds.
+///
+/// A timer-backed future so `async () => { .. }` event handlers can `.await`
+/// something real (debounces, "saved" flashes, staged multi-step updates)
+/// without hand-writing `spawn_local` or `setTimeout` wiring. Implemented as a
+/// `js_sys::Promise` resolved through a `Window.setTimeout`.
+pub async fn sleep(ms: u32) {
+    let promise = js_sys::Promise::new(
+        &mut |resolve: js_sys::Function, _reject: js_sys::Function| {
+            let window = web_sys::window().expect(
+                "Velo: No global window found. Are you running in a browser environment?",
+            );
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                &resolve,
+                ms as i32,
+            );
+        },
+    );
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
 // =============================================================================
@@ -1295,7 +1354,11 @@ impl DomNode {
         T: Clone + 'static,
         K: Eq + std::hash::Hash + Clone + 'static,
         FKey: Fn(&T) -> K + 'static,
-        FRender: Fn(&T) -> DomNode + 'static + Clone,
+        // NOTE: FRender does NOT need + Clone. The closure is moved into the
+        // effect once and called multiple times from within it — cloning would
+        // force the closure to be Copy, which breaks non-Copy captures.
+        // See https://github.com/velo-framework/velo/issues/... for context.
+        FRender: Fn(&T) -> DomNode + 'static,
     {
         use std::cell::RefCell;
         use std::collections::HashMap;
@@ -1895,22 +1958,50 @@ pub fn Router(props: RouterProps) -> DomNode {
     view_wrapper
 }
 
-/// Props for [`Link`]: `<Link to="..." label="..." />`.
+/// Props for [`Link`]: `<Link to="..." label="..." />` or `<Link to="...">Children</Link>`.
+/// Supports active state styling via the `active_class` prop.
 #[allow(non_snake_case)]
 pub struct LinkProps {
     pub to: &'static str,
-    pub label: &'static str,
+    /// Optional static label text (used when no children are provided).
+    pub label: Option<&'static str>,
+    /// Optional children nodes (takes precedence over `label`).
+    pub children: Option<Vec<DomNode>>,
+    /// Optional CSS class to apply when this link's route is active.
+    pub active_class: Option<&'static str>,
 }
 
 /// Ergonomic Link component that allows clean macro nesting: <Link to="...">Children</Link>
+/// Supports active state styling via `active_class` prop.
 #[allow(non_snake_case)]
 pub fn Link(props: LinkProps) -> DomNode {
-    let LinkProps { to, label } = props;
+    let LinkProps { to, label, children, active_class } = props;
     let anchor = DomNode::element("a");
     anchor.reactive_attribute("href", move || to.to_string());
 
-    let text_content = DomNode::text(label);
-    anchor.append(&text_content);
+    // Render children if provided, otherwise use label text
+    if let Some(children) = children {
+        for child in children {
+            anchor.append(&child);
+        }
+    } else if let Some(label) = label {
+        let text_content = DomNode::text(label);
+        anchor.append(&text_content);
+    }
+
+    // Active state: if active_class provided, reactively add/remove it based on current route
+    if let Some(active_class) = active_class {
+        let to = to.to_string();
+        anchor.reactive_attribute("class", move || {
+            let current = FRouter::use_route();
+            // Simple prefix match for active state (can be enhanced later)
+            if current == to || (current.starts_with(&to) && to != "/") {
+                active_class.to_string()
+            } else {
+                String::new()
+            }
+        });
+    }
 
     anchor.on("click", move |event| {
         event.prevent_default();
@@ -1932,6 +2023,11 @@ pub fn Link(props: LinkProps) -> DomNode {
 /// application files with reactivity primitives, DOM nodes, components,
 /// routers, and the view! macro.
 pub mod prelude {
+    // Re-export wasm-bindgen-futures so the view! macro's generated
+    // `wasm_bindgen_futures::spawn_local(...)` for `async () => { .. }` handlers
+    // resolves under `use velo::prelude::*` without per-example boilerplate.
+    pub use wasm_bindgen_futures;
+
     // Re-export core reactive primitives
     pub use crate::{
         batch,
@@ -1944,6 +2040,7 @@ pub mod prelude {
         provide_context,
         signal,
         signal_vec,
+        sleep,
         use_context,
         with_context,
         ReadSignal,

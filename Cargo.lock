@@ -37,6 +37,7 @@ dependencies = [
 name = "counter-spa"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "velo",
  "wasm-bindgen",
  "web-sys",

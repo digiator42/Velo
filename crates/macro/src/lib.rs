@@ -8,19 +8,19 @@ use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, Expr, Ident, LitStr, Pat, Token};
 
 // --- JS-style arrow-closure sugar: `(pat, ..) => expr` / `(pat, ..) => { .. }` ---
-//
-// `() => expr` isn't valid standalone Rust syntax (the `=>` only exists inside
-// match arms), so this can never be ambiguous with a real Rust expression.
-// That means we can safely try it speculatively via `fork()` wherever an
-// attribute value or `{ .. }` block is parsed, and fall back to ordinary
-// `syn::Expr` parsing whenever it doesn't match.
+// Supports both sync `() => expr` and async `async () => { ... }` forms.
+// The `async` keyword gives the Next.js-style async feel for event handlers
+// and reactive bodies.
 struct ArrowClosure {
+    asyncness: Option<Token![async]>,
     inputs: Punctuated<Pat, Token![,]>,
     body: Box<Expr>,
 }
 
 impl Parse for ArrowClosure {
     fn parse(input: ParseStream) -> Result<Self> {
+        let asyncness = input.parse::<Token![async]>().ok();
+
         let params;
         syn::parenthesized!(params in input);
         let inputs = params.parse_terminated(Pat::parse_single, Token![,])?;
@@ -40,6 +40,7 @@ impl Parse for ArrowClosure {
         // Arrow sugar always binds one full expression/block — no trailing
         // tokens should remain in `input` for this attribute/block position.
         Ok(ArrowClosure {
+            asyncness,
             inputs,
             body: Box::new(body),
         })
@@ -64,12 +65,28 @@ fn try_parse_arrow(input: ParseStream) -> Option<ArrowClosure> {
 /// `FnMut(web_sys::Event) + 'static`. `() => ..` gets an injected, discarded
 /// event param; `(e) => ..` binds the event to `e` (untyped — inferred from
 /// the `on()` bound, exactly like a hand-written closure would be).
+/// Supports `async () => { ... }` for async event handlers (dispatched via
+/// wasm-bindgen-futures).
 fn parse_event_handler_value(input: ParseStream) -> Result<Expr> {
-    if let Some(ArrowClosure { inputs, body }) = try_parse_arrow(input) {
-        let closure: Expr = if inputs.is_empty() {
-            syn::parse_quote! { move |_evt: web_sys::Event| #body }
+    if let Some(ArrowClosure { asyncness, inputs, body }) = try_parse_arrow(input) {
+        let closure: Expr = if asyncness.is_some() {
+            // Async handler: spawn a future via wasm-bindgen-futures
+            if inputs.is_empty() {
+                syn::parse_quote! { move |_evt: web_sys::Event| {
+                    wasm_bindgen_futures::spawn_local(async move { #body })
+                } }
+            } else {
+                syn::parse_quote! { move |#inputs| {
+                    wasm_bindgen_futures::spawn_local(async move { #body })
+                } }
+            }
         } else {
-            syn::parse_quote! { move |#inputs| #body }
+            // Sync handler (existing behavior)
+            if inputs.is_empty() {
+                syn::parse_quote! { move |_evt: web_sys::Event| #body }
+            } else {
+                syn::parse_quote! { move |#inputs| #body }
+            }
         };
         return Ok(closure);
     }
@@ -81,6 +98,7 @@ fn parse_event_handler_value(input: ParseStream) -> Result<Expr> {
 /// form makes sense here — reactive expressions don't receive anything — so
 /// non-empty params are left unhandled and fall through to a normal parse
 /// error rather than silently doing the wrong thing.
+/// Supports `async () => { ... }` for async reactive expressions.
 fn try_parse_reactive_arrow(input: ParseStream) -> Option<Expr> {
     let fork = input.fork();
     let arrow = fork.parse::<ArrowClosure>().ok()?;
@@ -89,7 +107,12 @@ fn try_parse_reactive_arrow(input: ParseStream) -> Option<Expr> {
     }
     input.advance_to(&fork);
     let body = arrow.body;
-    Some(syn::parse_quote! { move || #body })
+    if arrow.asyncness.is_some() {
+        // Async reactive expression: return a future
+        Some(syn::parse_quote! { move || async move { #body } })
+    } else {
+        Some(syn::parse_quote! { move || #body })
+    }
 }
 
 enum VNode {
@@ -437,6 +460,8 @@ impl ToTokens for VNode {
                     //
                     // Both branches are built ONCE (children are independently
                     // reactive via their own render_expression effects), then
+                    // the condition is wrapped in `signal_value!` so raw signals
+                    // auto-unwrap into their current value.
                     // `reactive_switch` moves whichever branch is active into a
                     // fragment, swapping live when the condition flips.
                     if component_name == "Show" || component_name == "Suspense" {
@@ -445,7 +470,11 @@ impl ToTokens for VNode {
                         for attr in attributes {
                             if attr.key == "when" || attr.key == "loading" {
                                 let v = &attr.value;
-                                when_val = quote! { #v };
+                                // Auto-unwrap via `signal_value!` so a raw signal
+                                // (`when={ show_card }`) works as the condition;
+                                // plain bool expressions pass through the
+                                // `ViewValue` blanket unchanged.
+                                when_val = quote! { velo::signal_value!(#v) };
                             } else if attr.key == "fallback" {
                                 let v = &attr.value;
                                 fallback_val = quote! { #v };
@@ -472,6 +501,48 @@ impl ToTokens for VNode {
                                 #content_block,
                                 #fallback_val,
                             )
+                        });
+                        return;
+                    }
+
+                    // `Link` is a known builtin with an unusual props shape: its
+                    // `label` / `active_class` fields are `Option<&str>` and its
+                    // `children` is `Option<Vec<DomNode>>`. String-literal attrs
+                    // (`label="Home"`, `active_class="is-active"`) are wrapped in
+                    // `Some(..)` automatically so the long-standing `label=".."`
+                    // API keeps working next to the children form
+                    // (`<Link to="..">Text</Link>`); braced exprs pass through
+                    // as-is so callers can also hand an `Option` value.
+                    if component_name == "Link" {
+                        let mut to_val: TokenStream2 = quote! {};
+                        let mut label_val: TokenStream2 = quote! { None };
+                        let mut class_val: TokenStream2 = quote! { None };
+                        for attr in attributes {
+                            let v = &attr.value;
+                            let v_optional: TokenStream2 = match v {
+                                Expr::Lit(_) => quote! { Some(#v) },
+                                _ => quote! { #v },
+                            };
+                            if attr.key == "to" {
+                                to_val = quote! { #v };
+                            } else if attr.key == "label" {
+                                label_val = v_optional;
+                            } else if attr.key == "active_class" {
+                                class_val = v_optional;
+                            }
+                        }
+                        let children_val: TokenStream2 = if children.is_empty() {
+                            quote! { None }
+                        } else {
+                            quote! { Some(vec![#(#children),*]) }
+                        };
+                        tokens.extend(quote! {
+                            velo::Link(velo::LinkProps {
+                                to: #to_val,
+                                label: #label_val,
+                                active_class: #class_val,
+                                children: #children_val,
+                            })
                         });
                         return;
                     }
@@ -561,22 +632,34 @@ impl ToTokens for VNode {
                             let event_name_str: syn::LitStr = syn::parse_quote! { "input" };
                             let field_name: syn::LitStr = syn::parse_quote! { "value" };
                             setup_statements.push(quote! {
-                                let bind_node = parent_node.clone();
                                 let bind_tmp = (#val).clone();
                                 let bind_sig_1 = bind_tmp.clone();
                                 let bind_sig_2 = bind_tmp.clone();
-                                // Forward signal -> DOM (reactive value attribute).
-                                bind_node.reactive_attribute(#field_name, move || {
-                                    let v = velo::signal_value!(bind_sig_1);
-                                    format!("{}", v)
-                                });
+                                // Forward signal -> DOM: set live property AND reactive attribute.
+                                {
+                                    let bind_node = parent_node.clone();
+                                    let bind_sig_1 = bind_sig_1.clone();
+                                    parent_node.reactive_attribute(#field_name, move || {
+                                        use wasm_bindgen::JsCast;
+                                        let v = velo::signal_value!(bind_sig_1);
+                                        let s = format!("{}", v);
+                                        // Also set live DOM property for correct IME/reset behavior
+                                        if let Ok(el) = bind_node.raw_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
+                                            let _ = el.set_value(&s);
+                                        }
+                                        s
+                                    });
+                                }
                                 // Forward DOM -> signal (on input, read element and set signal).
-                                bind_node.on(#event_name_str, move |e: web_sys::Event| {
-                                    use wasm_bindgen::JsCast;
-                                    let target = e.target().expect("bind:value event has no target");
-                                    let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:value requires an input/textarea/select element");
-                                    bind_sig_2.set(el.value());
-                                });
+                                {
+                                    let bind_node = parent_node.clone();
+                                    parent_node.on(#event_name_str, move |e: web_sys::Event| {
+                                        use wasm_bindgen::JsCast;
+                                        let target = e.target().expect("bind:value event has no target");
+                                        let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:value requires an input/textarea/select element");
+                                        bind_sig_2.set(el.value());
+                                    });
+                                }
                             });
                         } else if key.starts_with("bind:checked") {
                             // Two-way binding for checkboxes / radio buttons.
@@ -590,21 +673,34 @@ impl ToTokens for VNode {
                             // variable that both closures try to move.
                             let event_name_str: syn::LitStr = syn::parse_quote! { "change" };
                             setup_statements.push(quote! {
-                                let bind_node = parent_node.clone();
                                 let bind_tmp = (#val).clone();
                                 let bind_sig_1 = bind_tmp.clone();
                                 let bind_sig_2 = bind_tmp.clone();
-                                // Forward signal -> DOM (reactive checked attribute).
-                                bind_node.reactive_attribute("checked", move || {
-                                    if velo::signal_value!(bind_sig_1) { "checked" } else { "" }
-                                });
-                                // Forward DOM -> signal (on change, read checked and set signal).
-                                bind_node.on(#event_name_str, move |e: web_sys::Event| {
-                                    use wasm_bindgen::JsCast;
-                                    let target = e.target().expect("bind:checked event has no target");
-                                    let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:checked requires a checkbox/radio input");
-                                    bind_sig_2.set(el.checked());
-                                });
+                                // Forward signal -> DOM: set live property AND reactive attribute.
+                                {
+                                    let bind_node = parent_node.clone();
+                                    let bind_sig_1 = bind_sig_1.clone();
+                                    parent_node.reactive_attribute("checked", move || {
+                                        use wasm_bindgen::JsCast;
+                                        let checked = velo::signal_value!(bind_sig_1);
+                                        let s = if checked { "checked" } else { "" };
+                                        // Also set live DOM property for correct behavior
+                                        if let Ok(el) = bind_node.raw_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
+                                            let _ = el.set_checked(checked);
+                                        }
+                                        s
+                                    });
+                                }
+                                // Forward DOM -> signal (on change, read element and set signal).
+                                {
+                                    let bind_node = parent_node.clone();
+                                    parent_node.on(#event_name_str, move |e: web_sys::Event| {
+                                        use wasm_bindgen::JsCast;
+                                        let target = e.target().expect("bind:checked event has no target");
+                                        let el = target.dyn_into::<web_sys::HtmlInputElement>().expect("bind:checked requires a checkbox/radio input");
+                                        bind_sig_2.set(el.checked());
+                                    });
+                                }
                             });
                         } else if key == "disabled"
                             || key == "checked"
