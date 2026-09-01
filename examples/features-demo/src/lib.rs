@@ -72,22 +72,21 @@ struct User {
 
 /// Theme toggle demo: reads the theme from context and toggles a class/style.
 fn theme_page() -> DomNode {
-    thread_local! { static C: std::cell::Cell<u32> = std::cell::Cell::new(0); }
-    C.with(|c| { c.set(c.get()+1); web_sys::console::log_1(&format!("PROBE theme_page called count={}", c.get()).into()); });
     // Read the shared theme signal from context.
     let theme = use_context::<Theme>().expect("Theme context must be provided");
     let dark = theme.dark;
     // Derive a reactive color string from the boolean signal.
     let color = create_memo({
         let d = dark.clone();
-        move || { let v = if d.get() { "orangered" } else { "teal" }.to_string(); web_sys::console::log_1(&format!("PROBE memo computed={}", v).into()); v }
+        move || if d.get() { "orangered".to_string() } else { "teal".to_string() }
     });
     let dark_toggle = dark.clone();
+    let dark_click = dark.clone();
 
     view! {
         <div class:dark={ dark_toggle } class="page">
             <h2>"Theme (class: + style: toggles + context)"</h2>
-            <button on:click={ move |_| { let next=!dark.get(); web_sys::console::log_1(&format!("PROBE click: setting dark={}", next).into()); dark.set(next); } }>
+            <button on:click={ move |_| dark_click.set(!dark_click.get()) }>
                 "Toggle theme"
             </button>
             // Reactive inline style bound to a derived signal.
