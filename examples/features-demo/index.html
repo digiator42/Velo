@@ -6,13 +6,14 @@
     <title>Velo — Features Demo</title>
     <style>
       body { font-family: system-ui, sans-serif; margin: 2rem; }
-      .page { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
       .card { padding: 0.25rem 0.5rem; }
       .card.active { background: #e8f0fe; font-weight: bold; }
-      .page.dark { background: #222; color: #eee; border-color: #444; }
+      button { margin-right: 0.5rem; }
+      /* .page.dark must come AFTER .page to override in cascade */
+      .page { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+      .page.dark { background: #222 !important; color: #eee !important; border-color: #444 !important; }
       .page.dark .card { background: #333; border-color: #555; }
       .page.dark .badge { background: #3a3a3a; color: #eee; }
-      button { margin-right: 0.5rem; }
     </style>
   </head>
   <body>
