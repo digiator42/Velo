@@ -2,9 +2,10 @@ use velo::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A simple application theme shared via context.
+/// The theme holds a **signal** so that changes propagate reactively.
 #[derive(Clone)]
 struct Theme {
-    dark: bool,
+    dark: RwSignal<bool>,
 }
 
 /// A `#[component]` — the macro rewrites the return type to `DomNode`,
@@ -73,7 +74,9 @@ struct User {
 fn theme_page() -> DomNode {
     thread_local! { static C: std::cell::Cell<u32> = std::cell::Cell::new(0); }
     C.with(|c| { c.set(c.get()+1); web_sys::console::log_1(&format!("PROBE theme_page called count={}", c.get()).into()); });
-    let (dark, set_dark) = create_signal(false);
+    // Read the shared theme signal from context.
+    let theme = use_context::<Theme>().expect("Theme context must be provided");
+    let dark = theme.dark;
     // Derive a reactive color string from the boolean signal.
     let color = create_memo({
         let d = dark.clone();
@@ -84,7 +87,7 @@ fn theme_page() -> DomNode {
     view! {
         <div class:dark={ dark_toggle } class="page">
             <h2>"Theme (class: + style: toggles + context)"</h2>
-            <button on:click={ move |_| { let next=!dark.get(); web_sys::console::log_1(&format!("PROBE click: setting dark={}", next).into()); set_dark.set(next); } }>
+            <button on:click={ move |_| { let next=!dark.get(); web_sys::console::log_1(&format!("PROBE click: setting dark={}", next).into()); dark.set(next); } }>
                 "Toggle theme"
             </button>
             // Reactive inline style bound to a derived signal.
@@ -141,7 +144,7 @@ fn ThemeBadge() {
         <div class="badge">
             {
                 move || match theme.clone() {
-                    Some(t) => DomNode::text(if t.dark { "Dark mode on" } else { "Light mode on" }),
+                    Some(t) => DomNode::text(if t.dark.get() { "Dark mode on" } else { "Light mode on" }),
                     None => DomNode::text("No theme in context"),
                 }
             }
@@ -174,7 +177,8 @@ pub fn main() {
 
 pub fn run_app() {
     // Provide a theme to the whole app via context.
-    provide_context(Theme { dark: false });
+    // Uses a signal so changes propagate reactively to all readers.
+    provide_context(Theme { dark: signal(false) });
 
     let app_shell = view! {
         <div id="app-container">
