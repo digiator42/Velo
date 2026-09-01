@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
+use std::path::{Path, PathBuf};
 use syn::ext::IdentExt;
 use syn::parse::discouraged::Speculative;
 use syn::parse::{Parse, ParseStream, Result};
@@ -562,7 +563,10 @@ impl ToTokens for VNode {
                                 _ => quote! { #v },
                             };
                             if attr.key == "to" {
-                                to_val = quote! { #v };
+                                // `LinkProps.to` is a `String`, so accept both a
+                                // literal/const `&str` and the typed `paths::*`
+                                // builders (String) via one `.into()`.
+                                to_val = quote! { #v.into() };
                             } else if attr.key == "label" {
                                 label_val = v_optional;
                             } else if attr.key == "active_class" {
@@ -1040,4 +1044,375 @@ pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
             velo::RouteRegistration { path: #path_lit, component: #fn_ident }
         }
     })
+}
+
+// =============================================================================
+// §4 — File-based `app/` routing: `velo::app!` + `#[page]` / `#[layout]`
+// =============================================================================
+
+/// Marker for an application **page** function.
+///
+/// By convention the function is named `page` and lives at
+/// `src/app/**/page.rs`, e.g. `src/app/blog/[slug]/page.rs` ->
+/// `/blog/:slug`. Returns `velo::DomNode`; read route params with
+/// `FRouter::use_param::<T>("name")`.
+#[proc_macro_attribute]
+pub fn page(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+/// Marker for a **layout** function.
+///
+/// By convention named `layout` at `src/app/**/layout.rs`. Takes the matched
+/// child subtree and wraps it: `fn layout(child: DomNode) -> DomNode`. Layouts
+/// from the nearest segment up to the root compose around every route below
+/// them.
+#[proc_macro_attribute]
+pub fn layout(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+/// Marker for the global **not-found** page at `src/app/not-found.rs`.
+/// By convention: `fn not_found() -> DomNode`. Registers the `/**` fallback.
+#[proc_macro_attribute]
+pub fn not_found(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum AppFileKind {
+    Page,
+    Layout,
+    NotFound,
+    Other,
+}
+
+struct AppFile {
+    rel: String,
+    kind: AppFileKind,
+}
+
+fn collect_app_files(base: &Path) -> Vec<AppFile> {
+    let mut out = Vec::new();
+    let mut stack = vec![base.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.extension().map(|x| x == "rs").unwrap_or(false) {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let kind = match name.as_str() {
+                    "page.rs" => AppFileKind::Page,
+                    "layout.rs" => AppFileKind::Layout,
+                    "not-found.rs" => AppFileKind::NotFound,
+                    _ => AppFileKind::Other,
+                };
+                out.push(AppFile { rel, kind });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.rel.cmp(&b.rel));
+    out
+}
+
+/// Deterministic module name for a relative `src/app/` file path.
+fn module_ident(rel: &str) -> syn::Ident {
+    let stem = rel.strip_suffix(".rs").unwrap_or(rel);
+    let mut name = String::new();
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() {
+            name.push(ch.to_ascii_lowercase());
+        } else {
+            name.push('_');
+        }
+    }
+    if name.is_empty() || name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        name.insert(0, 'p');
+    }
+    syn::Ident::new(&name, proc_macro2::Span::call_site())
+}
+
+fn sanitize_ident(s: &str) -> String {
+    let mut out: String = s
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .collect();
+    if out.is_empty() || out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        out.insert(0, 'p');
+    }
+    out
+}
+
+#[derive(Default)]
+struct RouteData {
+    path: String,
+    /// Raw param keys, in route order (`[x]` -> `x`).
+    params: Vec<String>,
+    /// `format!(..)` template with `{}` slots in param order.
+    fmt: String,
+    /// Static segment idents (for const names), in order.
+    static_segs: Vec<String>,
+}
+
+fn route_data(rel: &str) -> RouteData {
+    let stem = rel.strip_suffix(".rs").unwrap_or(rel);
+    let mut segs: Vec<&str> = stem.split('/').collect();
+    segs.pop(); // drop the `page` filename
+    let mut data = RouteData { path: "/".to_string(), fmt: "/".to_string(), ..Default::default() };
+    for seg in segs {
+        let mut catch_all = false;
+        if let Some(inner) = seg.strip_prefix("[...").and_then(|s| s.strip_suffix(']')) {
+            data.params.push(inner.to_string());
+            data.fmt.push_str("{}");
+            catch_all = true;
+        } else if let Some(inner) = seg.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            data.params.push(inner.to_string());
+            data.path.push(':');
+            data.path.push_str(inner);
+            data.fmt.push_str("{}");
+        } else {
+            data.static_segs.push(sanitize_ident(seg));
+            data.path.push_str(seg);
+            data.fmt.push_str(seg);
+        }
+        data.path.push('/');
+        data.fmt.push('/');
+        if catch_all {
+            data.path.push_str("**");
+            data.fmt.pop();
+            break;
+        }
+    }
+    if data.path.len() > 1 && !data.path.ends_with("**") {
+        data.path.pop();
+    }
+    if data.fmt.len() > 1 && !data.fmt.ends_with("**") {
+        data.fmt.pop();
+    }
+    data
+}
+
+/// Layout chain (nearest segment layout -> ... -> root layout) for a page rel.
+fn layout_chain(rel: &str, files: &[AppFile]) -> Vec<String> {
+    let dir = match rel.rsplit_once('/') {
+        Some((d, _)) => d,
+        None => "",
+    };
+    let mut dirs = Vec::new();
+    if !dir.is_empty() {
+        let mut cur = String::new();
+        for part in dir.split('/') {
+            cur.push_str(part);
+            dirs.push(cur.clone());
+            cur.push('/');
+        }
+    }
+    let mut out = Vec::new();
+    for d in dirs.iter().rev() {
+        let layout_rel = if d.is_empty() { "layout.rs".into() } else { format!("{d}/layout.rs") };
+        if files.iter().any(|f| f.rel == layout_rel && f.kind == AppFileKind::Layout) {
+            out.push(layout_rel);
+        }
+    }
+    if files.iter().any(|f| f.rel == "layout.rs" && f.kind == AppFileKind::Layout) {
+        out.push("layout.rs".into());
+    }
+    out
+}
+
+/// Emits a typed `paths` entry for a page: `const` for static paths, a
+/// path-building `fn` for routes with params.
+fn path_helper(data: &RouteData) -> TokenStream2 {
+    if data.params.is_empty() {
+        let mut name = String::from("INDEX");
+        if !data.static_segs.is_empty() {
+            name = data
+                .static_segs
+                .iter()
+                .map(|s| s.to_ascii_uppercase())
+                .collect::<Vec<_>>()
+                .join("_");
+        }
+        let const_name = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        let path_lit = syn::LitStr::new(&data.path, proc_macro2::Span::call_site());
+        quote! { pub const #const_name: &str = #path_lit; }
+    } else {
+        let mut name = String::new();
+        for seg in &data.static_segs {
+            name.push_str(seg);
+            name.push('_');
+        }
+        for p in &data.params {
+            name.push_str(&sanitize_ident(p));
+            name.push('_');
+        }
+        name.pop();
+        let fn_name = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        let args: Vec<syn::Ident> = data
+            .params
+            .iter()
+            .map(|p| syn::Ident::new(&sanitize_ident(p), proc_macro2::Span::call_site()))
+            .collect();
+        let fmt_lit = syn::LitStr::new(&data.fmt, proc_macro2::Span::call_site());
+        quote! { pub fn #fn_name(#(#args: &str),*) -> String { format!(#fmt_lit, #(#args),*) } }
+    }
+}
+
+/// `velo::app!()` — Next.js-style file-based routing.
+///
+/// Reads the crate's `src/app/` directory at compile time and expands to a
+/// `pub mod velo_app { .. }` containing:
+///   - one nested `mod` per `.rs` file (via `include!`),
+///   - a typed `paths` module of compile-checked route path helpers,
+///   - `pub fn routes() -> Vec<velo::Route>` to hand to `<Router />`.
+///
+/// Conventions:
+/// ```text
+///   src/app/page.rs              -> "/"
+///   src/app/layout.rs            -> root layout (wraps every route)
+///   src/app/blog/page.rs         -> "/blog"
+///   src/app/blog/[slug]/page.rs  -> "/blog/:slug"
+///   src/app/blog/[...rest]/page.rs -> "/blog/**"   (catch-all)
+///   src/app/not-found.rs         -> "**"           (global not-found)
+/// ```
+///
+/// Page files expose `pub fn page() -> velo::DomNode`; layout files expose
+/// `pub fn layout(child: velo::DomNode) -> velo::DomNode` (they wrap the
+/// matched leaf); `not-found.rs` exposes `pub fn not_found() -> velo::DomNode`.
+/// Params are read with `FRouter::use_param::<T>("slug")`.
+#[proc_macro]
+pub fn app(_input: TokenStream) -> TokenStream {
+    let manifest = match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(m) => m,
+        Err(_) => {
+            return syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "velo::app!: CARGO_MANIFEST_DIR is unavailable",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    let src_app: PathBuf = Path::new(&manifest).join("src").join("app");
+    if !src_app.is_dir() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "velo::app! requires an `src/app/` directory at the crate root (Next.js-style)",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let files = collect_app_files(&src_app);
+    let pages: Vec<&AppFile> = files.iter().filter(|f| f.kind == AppFileKind::Page).collect();
+    if pages.is_empty() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "velo::app!: no `page.rs` files found under `src/app/`",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // One compiled module per `src/app/` file. The included files reference the
+    // typed `paths` helpers (e.g. `paths::blog_slug("x")`); `paths` lives in
+    // `velo_app`, one level above every page module, so import it via `super`.
+    let mod_items = files.iter().map(|f| {
+        let name = module_ident(&f.rel);
+        let rel_lit = syn::LitStr::new(&f.rel, proc_macro2::Span::call_site());
+        quote! {
+            mod #name {
+                use super::paths;
+                include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/app/", #rel_lit));
+            }
+        }
+    });
+
+    let mut wrappers = Vec::new();
+    let mut route_entries = Vec::new();
+    let mut path_items = Vec::new();
+
+    for page in &pages {
+        let data = route_data(&page.rel);
+        let leaf = module_ident(&page.rel);
+        let render_name = syn::Ident::new(
+            &format!("{leaf}__render"),
+            proc_macro2::Span::call_site(),
+        );
+        let layouts = layout_chain(&page.rel, &files);
+        if layouts.is_empty() {
+            wrappers.push(quote! {
+                fn #render_name() -> velo::DomNode { #leaf::page() }
+            });
+        } else {
+            let mut body: Vec<TokenStream2> = vec![quote! { let mut __node = #leaf::page(); }];
+            for l in &layouts {
+                let lm = module_ident(l);
+                body.push(quote! { __node = #lm::layout(__node); });
+            }
+            body.push(quote! { __node });
+            wrappers.push(quote! {
+                fn #render_name() -> velo::DomNode { #(#body)* }
+            });
+        }
+
+        let path_lit = syn::LitStr::new(&data.path, proc_macro2::Span::call_site());
+        route_entries.push(quote! {
+            velo::Route { path: #path_lit, component: #render_name }
+        });
+        path_items.push(path_helper(&data));
+    }
+
+    for nf in files.iter().filter(|f| f.kind == AppFileKind::NotFound) {
+        let leaf = module_ident(&nf.rel);
+        let render_name =
+            syn::Ident::new(&format!("{leaf}__render"), proc_macro2::Span::call_site());
+        let layouts = layout_chain(&nf.rel, &files);
+        let wrapper = if layouts.is_empty() {
+            quote! { fn #render_name() -> velo::DomNode { #leaf::not_found() } }
+        } else {
+            let mut body: Vec<TokenStream2> =
+                vec![quote! { let mut __node = #leaf::not_found(); }];
+            for l in &layouts {
+                let lm = module_ident(l);
+                body.push(quote! { __node = #lm::layout(__node); });
+            }
+            body.push(quote! { __node });
+            quote! { fn #render_name() -> velo::DomNode { #(#body)* } }
+        };
+        wrappers.push(wrapper);
+        route_entries.push(quote! {
+            velo::Route { path: "/**", component: #render_name }
+        });
+    }
+
+    let expanded = quote! {
+        pub mod velo_app {
+            #(#mod_items)*
+            pub mod paths {
+                #(#path_items)*
+            }
+            #(#wrappers)*
+            pub fn routes() -> Vec<velo::Route> {
+                vec![
+                    #(#route_entries),*
+                ]
+            }
+        }
+    };
+    TokenStream::from(expanded)
 }

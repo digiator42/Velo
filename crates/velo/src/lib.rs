@@ -14,7 +14,7 @@
 
 /// The `view!`, `#[component]`, `routes!`, and `#[route]` procedural macros
 /// (defined in the companion `velo_macro` package).
-pub use velo_macro::{component, route, routes, view};
+pub use velo_macro::{app, component, layout, not_found, page, route, routes, view};
 
 // =============================================================================
 // =============================================================================
@@ -1962,7 +1962,9 @@ pub fn Router(props: RouterProps) -> DomNode {
 /// Supports active state styling via the `active_class` prop.
 #[allow(non_snake_case)]
 pub struct LinkProps {
-    pub to: &'static str,
+    /// Destination path. Accepts a typed `paths::*` builder from `velo::app!`
+    /// (or the new `routes!`-free router); string literals coerce via `.into()`.
+    pub to: String,
     /// Optional static label text (used when no children are provided).
     pub label: Option<&'static str>,
     /// Optional children nodes (takes precedence over `label`).
@@ -1977,7 +1979,8 @@ pub struct LinkProps {
 pub fn Link(props: LinkProps) -> DomNode {
     let LinkProps { to, label, children, active_class } = props;
     let anchor = DomNode::element("a");
-    anchor.reactive_attribute("href", move || to.to_string());
+    let href = to.clone();
+    anchor.reactive_attribute("href", move || href.clone());
 
     // Render children if provided, otherwise use label text
     if let Some(children) = children {
@@ -2005,7 +2008,7 @@ pub fn Link(props: LinkProps) -> DomNode {
 
     anchor.on("click", move |event| {
         event.prevent_default();
-        navigate_to(to);
+        navigate_to(&to);
     });
 
     anchor
@@ -2067,8 +2070,9 @@ pub mod prelude {
         RouterProps,
     };
 
-    // Re-export the view! + #[component] + routes! + #[route] procedural macros
-    pub use crate::{component, route, routes, view};
+    // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]
+    // procedural macros
+    pub use crate::{app, component, layout, not_found, page, route, routes, view};
 
     // Re-export the shorthand convenience macros. `signal!` shares its name with
     // the `signal` value already re-exported above, so the macro rides along on
