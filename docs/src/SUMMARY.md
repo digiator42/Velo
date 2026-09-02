@@ -43,6 +43,7 @@
 - [Links & Client-Side Navigation](routing/links-and-navigation.md)
 - [Route Parameters & Query Strings](routing/parameters-and-queries.md)
 - [Suspense & Loading States](routing/suspense-and-loading.md)
+- [Fetching Data & Prefetching](routing/fetching-data-and-prefetching.md)
 - [Lazy Loading & Code Splitting](routing/code-splitting-and-lazy-loading.md)
 
 # DOM & Lifecycle

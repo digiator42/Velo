@@ -92,16 +92,12 @@ fn macro_demo() -> DomNode {
         move || count.set(count.get() + 1)
     };
 
-    let button = DomNode::element("button");
-    button.reactive_attribute("type", || "button".to_string());
-    button.on("click", move |_| inc());
-    let counter_label = DomNode::reactive_text(move || format!("count = {}", count.get()));
-    button.append(&counter_label);
-
     view! {
         <div>
             { label }
-            { button }
+            <button type="button" on:click={ move |_e| inc() }>
+                { move || format!("count = {}", count.get()) }
+            </button>
         </div>
     }
 }

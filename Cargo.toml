@@ -14,6 +14,7 @@ members = [
     "examples/dynamic",
     "examples/typed-nav",
     "examples/new-features",
+    "examples/prefetch-fetch",
 ]
 resolver = "2"
 
