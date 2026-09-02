@@ -1079,6 +1079,22 @@ pub fn not_found(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
+/// Marker for a segment **error** boundary at `src/app/**/error.rs`.
+/// By convention: `fn error() -> DomNode`. `app!` wraps every page below the
+/// nearest `error.rs` in an error boundary (see `velo::error_boundary`).
+#[proc_macro_attribute]
+pub fn error(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+/// Marker for a segment **loading** placeholder at `src/app/**/loading.rs`.
+/// By convention: `fn loading() -> DomNode`. `app!` shows it as a Suspense
+/// fallback while the route is mounting (`velo::route_loading()`).
+#[proc_macro_attribute]
+pub fn loading(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
 #[derive(PartialEq, Clone, Copy)]
 enum AppFileKind {
     Page,
@@ -1288,12 +1304,17 @@ fn path_helper(data: &RouteData) -> TokenStream2 {
 ///   src/app/blog/[slug]/page.rs  -> "/blog/:slug"
 ///   src/app/blog/[...rest]/page.rs -> "/blog/**"   (catch-all)
 ///   src/app/not-found.rs         -> "**"           (global not-found)
+///   src/app/blog/error.rs        -> nearest error boundary (wraps below it)
+///   src/app/blog/loading.rs      -> nearest loading placeholder
 /// ```
 ///
 /// Page files expose `pub fn page() -> velo::DomNode`; layout files expose
 /// `pub fn layout(child: velo::DomNode) -> velo::DomNode` (they wrap the
-/// matched leaf); `not-found.rs` exposes `pub fn not_found() -> velo::DomNode`.
-/// Params are read with `FRouter::use_param::<T>("slug")`.
+/// matched leaf — the chain is *registered* with the Router, which keeps the
+/// shell mounted and swaps only the leaf across sibling navigation);
+/// `not-found.rs`, `error.rs`, `loading.rs` expose zero-arg
+/// `pub fn <name>() -> velo::DomNode`. Params are read with
+/// `FRouter::use_param::<T>("slug")`.
 #[proc_macro]
 pub fn app(_input: TokenStream) -> TokenStream {
     let manifest = match std::env::var("CARGO_MANIFEST_DIR") {
@@ -1345,6 +1366,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
     let mut wrappers = Vec::new();
     let mut route_entries = Vec::new();
     let mut path_items = Vec::new();
+    let mut layout_entries = Vec::new();
 
     for page in &pages {
         let data = route_data(&page.rel);
@@ -1353,24 +1375,51 @@ pub fn app(_input: TokenStream) -> TokenStream {
             &format!("{leaf}__render"),
             proc_macro2::Span::call_site(),
         );
-        let layouts = layout_chain(&page.rel, &files);
-        if layouts.is_empty() {
-            wrappers.push(quote! {
-                fn #render_name() -> velo::DomNode { #leaf::page() }
-            });
-        } else {
-            let mut body: Vec<TokenStream2> = vec![quote! { let mut __node = #leaf::page(); }];
-            for l in &layouts {
-                let lm = module_ident(l);
-                body.push(quote! { __node = #lm::layout(__node); });
-            }
-            body.push(quote! { __node });
-            wrappers.push(quote! {
-                fn #render_name() -> velo::DomNode { #(#body)* }
-            });
-        }
-
         let path_lit = syn::LitStr::new(&data.path, proc_macro2::Span::call_site());
+
+        // Layouts are not inlined into the leaf — they're handed to the Router
+        // as a registered chain so the shell stays mounted across sibling
+        // navigation and only the leaf swaps (M4 / 5.P4).
+        let layouts = layout_chain(&page.rel, &files);
+        let layout_fns: Vec<TokenStream2> = layouts
+            .iter()
+            .map(|l| {
+                let lm = module_ident(l);
+                quote! { #lm::layout as velo::LayoutFn }
+            })
+            .collect();
+        layout_entries.push(quote! {
+            (#path_lit, &[#(#layout_fns),*])
+        });
+
+        // Per-route error/loading boundaries (M5 / 5.P5): the nearest
+        // `error.rs` / `loading.rs` from the page's segment chain wins, else a
+        // built-in fallback / no placeholder.
+        let error_fallback = match find_segment_file(&page.rel, &files, "error.rs") {
+            Some(er) => {
+                let em = module_ident(&er);
+                quote! { #em::error() }
+            }
+            None => quote! { velo::default_error_fallback() },
+        };
+        let loading_fallback = match find_segment_file(&page.rel, &files, "loading.rs") {
+            Some(lr) => {
+                let lm = module_ident(&lr);
+                quote! {
+                    velo::reactive_switch(move || !velo::route_loading(), __content, #lm::loading())
+                }
+            }
+            None => quote! { __content },
+        };
+
+        wrappers.push(quote! {
+            fn #render_name() -> velo::DomNode {
+                let __content =
+                    velo::error_boundary(#error_fallback, Box::new(move || #leaf::page()));
+                #loading_fallback
+            }
+        });
+
         route_entries.push(quote! {
             velo::Route { path: #path_lit, component: #render_name }
         });
@@ -1382,19 +1431,24 @@ pub fn app(_input: TokenStream) -> TokenStream {
         let render_name =
             syn::Ident::new(&format!("{leaf}__render"), proc_macro2::Span::call_site());
         let layouts = layout_chain(&nf.rel, &files);
-        let wrapper = if layouts.is_empty() {
-            quote! { fn #render_name() -> velo::DomNode { #leaf::not_found() } }
-        } else {
-            let mut body: Vec<TokenStream2> =
-                vec![quote! { let mut __node = #leaf::not_found(); }];
-            for l in &layouts {
+        let layout_fns: Vec<TokenStream2> = layouts
+            .iter()
+            .map(|l| {
                 let lm = module_ident(l);
-                body.push(quote! { __node = #lm::layout(__node); });
+                quote! { #lm::layout as velo::LayoutFn }
+            })
+            .collect();
+        layout_entries.push(quote! {
+            ("/**", &[#(#layout_fns),*])
+        });
+        wrappers.push(quote! {
+            fn #render_name() -> velo::DomNode {
+                velo::error_boundary(
+                    velo::default_error_fallback(),
+                    Box::new(move || #leaf::not_found()),
+                )
             }
-            body.push(quote! { __node });
-            quote! { fn #render_name() -> velo::DomNode { #(#body)* } }
-        };
-        wrappers.push(wrapper);
+        });
         route_entries.push(quote! {
             velo::Route { path: "/**", component: #render_name }
         });
@@ -1408,6 +1462,9 @@ pub fn app(_input: TokenStream) -> TokenStream {
             }
             #(#wrappers)*
             pub fn routes() -> Vec<velo::Route> {
+                velo::register_app_layouts(&[
+                    #(#layout_entries),*
+                ]);
                 vec![
                     #(#route_entries),*
                 ]
@@ -1415,4 +1472,24 @@ pub fn app(_input: TokenStream) -> TokenStream {
         }
     };
     TokenStream::from(expanded)
+}
+
+/// Nearest `error.rs` / `loading.rs` in the page's segment directory chain:
+/// innermost segment first, walking up, then the app root.
+fn find_segment_file(rel: &str, files: &[AppFile], fname: &str) -> Option<String> {
+    let stem = rel.strip_suffix(".rs").unwrap_or(rel);
+    let mut segs: Vec<&str> = stem.split('/').collect();
+    segs.pop(); // drop the `page` filename
+    for i in (0..segs.len()).rev() {
+        let dir = segs[..=i].join("/");
+        let candidate = format!("{dir}/{fname}");
+        if files.iter().any(|f| f.rel == candidate) {
+            return Some(candidate);
+        }
+    }
+    let candidate = fname.to_string();
+    if files.iter().any(|f| f.rel == candidate) {
+        return Some(candidate);
+    }
+    None
 }

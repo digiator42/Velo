@@ -5,6 +5,7 @@ members = [
     "examples/counter-spa", "examples/server-monitor-dashboard",
     "examples/features-demo",
     "examples/todo-app",
+    "examples/async-dashboard",
     "examples/blog",
     "examples/memo-unwrap-check",
     "examples/arrow-closures",

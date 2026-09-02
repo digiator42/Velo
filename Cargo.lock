@@ -12,6 +12,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-dashboard"
+version = "0.1.0"
+dependencies = [
+ "velo",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "blog"
 version = "0.1.0"
 dependencies = [

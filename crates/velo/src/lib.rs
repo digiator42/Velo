@@ -14,7 +14,7 @@
 
 /// The `view!`, `#[component]`, `routes!`, and `#[route]` procedural macros
 /// (defined in the companion `velo_macro` package).
-pub use velo_macro::{app, component, layout, not_found, page, route, routes, view};
+pub use velo_macro::{app, component, error, layout, loading, not_found, page, route, routes, view};
 
 // =============================================================================
 // =============================================================================
@@ -1776,6 +1776,141 @@ pub struct Route {
 }
 
 // =============================================================================
+// Persistent layout shells  (§4 / 5.P4)
+// =============================================================================
+
+/// A layout layer: wraps a matched child subtree
+/// (`fn layout(child: DomNode) -> DomNode`). `app!` registers the chain per
+/// route path so the [`Router`] keeps the shell mounted across sibling
+/// navigation and swaps only the leaf outlet.
+pub type LayoutFn = fn(DomNode) -> DomNode;
+
+struct LayoutRegistrationRow {
+    path: String,
+    layouts: Vec<LayoutFn>,
+}
+
+thread_local! {
+    static LAYOUT_REGISTRY: RefCell<Vec<LayoutRegistrationRow>> = RefCell::new(Vec::new());
+}
+
+/// Register the `src/app/` layout chain for each route path (emitted by
+/// `velo::app!`'s generated `routes()`). Idempotent: a path is only stored once.
+pub fn register_app_layouts(entries: &[(&'static str, &[LayoutFn])]) {
+    LAYOUT_REGISTRY.with(|reg| {
+        let mut reg = reg.borrow_mut();
+        for (path, layouts) in entries {
+            if !reg.iter().any(|r| r.path == *path) {
+                reg.push(LayoutRegistrationRow {
+                    path: path.to_string(),
+                    layouts: layouts.to_vec(),
+                });
+            }
+        }
+    });
+}
+
+/// Layout chain (nearest segment layout -> ... -> root layout) registered for
+/// a route path; empty for routes without file-based `app!` layouts.
+pub fn app_layouts(path: &str) -> Vec<LayoutFn> {
+    LAYOUT_REGISTRY.with(|reg| {
+        reg.borrow()
+            .iter()
+            .find(|r| r.path == path)
+            .map(|r| r.layouts.clone())
+            .unwrap_or_default()
+    })
+}
+
+/// True between a navigation starting and the newly mounted route's first
+/// microtask — drives the automatic `loading.rs` placeholder emitted by `app!`.
+pub fn route_loading() -> bool {
+    ROUTE_LOADING.with(|s| s.get())
+}
+
+thread_local! {
+    static ROUTE_LOADING: Signal<bool> = Signal::new(false);
+}
+
+pub(crate) fn mark_route_loading() {
+    ROUTE_LOADING.with(|s| s.set(true));
+}
+
+pub(crate) fn clear_route_loading() {
+    ROUTE_LOADING.with(|s| {
+        let slot = s.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            slot.set(false);
+        });
+    });
+}
+
+// =============================================================================
+// Error boundaries  (§ 5.P5)
+// =============================================================================
+
+/// A default built-in fallback pane used when a route defines no `error.rs`.
+pub fn default_error_fallback() -> DomNode {
+    let div = DomNode::element("div");
+    div.reactive_attribute("class", move || "velo-error-boundary".to_string());
+    let p = DomNode::element("p");
+    p.append(&DomNode::text("Something went wrong rendering this subtree."));
+    div.append(&p);
+    div
+}
+
+thread_local! {
+    /// Active `error_boundary` status signals, nearest first. `boundary_fault`
+    /// writes to the current top of the stack; the boundary that owns it swaps
+    /// in its fallback. Nestable (a fault is consumed by the closest boundary).
+    static BOUNDARY_STACK: RefCell<Vec<RwSignal<Option<String>>>> = RefCell::new(Vec::new());
+}
+
+/// Declare the current error-boundary'd subtree as failed with a message.
+/// Purely "app-level": it requires no unwinding, so it works on wasm where
+/// `panic = "abort"` makes catching real panics impossible. The nearest
+/// enclosing [`error_boundary`] renders its fallback instead of this subtree
+/// and the rest of the app keeps running. Returns a throwaway node so it can
+/// be used as a return expression in a `page()`/component fn.
+pub fn boundary_fault(message: impl Into<String>) -> DomNode {
+    let msg = message.into();
+    BOUNDARY_STACK.with(|s| {
+        if let Some(top) = s.borrow().last() {
+            top.set(Some(msg));
+        }
+    });
+    DomNode::fragment()
+}
+
+/// Renders `build()` guarded by an error boundary: if the subtree calls
+/// [`boundary_fault`] (the wasm-compatible "Result from a resource" path), or
+/// unwinds a panic on targets that support it (`catch_unwind` on native), the
+/// `fallback` is shown instead and the rest of the app keeps living. This is
+/// exactly what `app!` emits for every page, gated by the nearest `error.rs`.
+///
+/// **Note:** `wasm32-unknown-unknown` compiles with `panic = "abort"` (no
+/// unwinding), so genuine `panic!`s there cannot be recovered — use
+/// [`boundary_fault`] for error boundaries that must survive on wasm.
+pub fn error_boundary(fallback: DomNode, build: Box<dyn FnOnce() -> DomNode + 'static>) -> DomNode {
+    let status: RwSignal<Option<String>> = RwSignal::new(None);
+
+    BOUNDARY_STACK.with(|s| s.borrow_mut().push(status.clone()));
+
+    // On native this also catches real unwinding panics inside the subtree.
+    let built =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(Box::new(move || build())));
+
+    BOUNDARY_STACK.with(|s| {
+        s.borrow_mut().pop();
+    });
+
+    match (built, status.get()) {
+        (Ok(node), None) => node,
+        _ => fallback,
+    }
+}
+
+// =============================================================================
 // Compile-time route collection via `inventory`
 // =============================================================================
 
@@ -1908,51 +2043,85 @@ pub fn Router(props: RouterProps) -> DomNode {
     }
 
     let view_wrapper = DomNode::element("div");
-    view_wrapper.reactive_attribute("class", || "velo-router-viewport".to_string());
+    view_wrapper.reactive_attribute("class", move || "velo-router-viewport".to_string());
 
-    let current_child: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
+    // Stable leaf outlet (M4 / 5.P4): the `app!` layout shell from
+    // `register_app_layouts` wraps THIS node; navigating between sibling routes
+    // swaps only the leaf inside it, so the layout subtree stays mounted and
+    // its local state (signals, scroll) is preserved.
+    let outlet = DomNode::element("div");
+    outlet.reactive_attribute("data-velo-route", move || "leaf".to_string());
+    let outlet_raw = outlet.raw_node.clone();
+
+    let shell_holder: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
+    let leaf_holder: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
+    let active_chain: Rc<RefCell<Vec<LayoutFn>>> = Rc::new(RefCell::new(Vec::new()));
+
     let wrapper_raw = view_wrapper.raw_node.clone();
-    let child_tracker = Rc::clone(&current_child);
+    let shell_c = Rc::clone(&shell_holder);
+    let leaf_c = Rc::clone(&leaf_holder);
+    let chain_c = Rc::clone(&active_chain);
+    let outlet_c = outlet.clone();
 
     std::mem::forget(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
 
-        if let Some(old_node) = child_tracker.borrow().as_ref() {
-            let _ = wrapper_raw.remove_child(&old_node.raw_node);
-        }
-
+        // 1. Match the route, staging parsed params BEFORE the leaf renders so
+        //    `FRouter::param` / `use_param` read fresh values.
         let mut params_payload = HashMap::new();
-
-        let matched_route = routes.iter().find(|r| {
-            if let Some(parsed_map) = match_route_patterns(r.path, &current_path) {
-                params_payload = parsed_map;
+        let matched = routes.iter().find(|r| {
+            if let Some(map) = match_route_patterns(r.path, &current_path) {
+                params_payload = map;
                 true
             } else {
                 false
             }
         });
 
-        // --- INTERCEPTION LAYER ---
-        // Store the parsed parameters globally BEFORE calling the component factory
         ACTIVE_PARAMS.with(|p| {
             *p.borrow_mut() = params_payload;
         });
 
-        let matched_component = match matched_route {
-            // Your component functions no longer need to accept parameters!
+        // 2. Layout shell: rebuild ONLY when the chain identity changes.
+        //    Same chain (e.g. `/blog/:slug` -> `/blog/:slug`) -> keep the
+        //    existing mounted shell; a layout-boundary change tears it down.
+        let chain = matched.map(|r| app_layouts(r.path)).unwrap_or_default();
+        if chain != *chain_c.borrow() {
+            if let Some(old) = shell_c.borrow().as_ref() {
+                let _ = wrapper_raw.remove_child(&old.raw_node);
+            }
+            // The same outlet is reused across rebuilds (it's just a Node);
+            // a rebuilt shell around it resets layout-local state, matching
+            // Next.js segment-layout remount semantics.
+            let mut shell = outlet_c.clone();
+            for l in &chain {
+                shell = l(shell);
+            }
+            let _ = wrapper_raw.append_child(&shell.raw_node);
+            *shell_c.borrow_mut() = Some(shell);
+            *chain_c.borrow_mut() = chain;
+        }
+
+        // 3. Signal a loading window so `app!`-emitted `loading.rs` placeholders
+        //    can flash until the freshly rendered route is attached.
+        mark_route_loading();
+
+        // 4. Swap the leaf inside the stable outlet.
+        if let Some(old) = leaf_c.borrow().as_ref() {
+            let _ = outlet_raw.remove_child(&old.raw_node);
+        }
+        let new_leaf = match matched {
             Some(route) => (route.component)(),
             None => {
-                let fallback = DomNode::element("h1");
+                let mut fallback = DomNode::element("h1");
                 fallback.append(&DomNode::text("404 - Page Not Found"));
                 fallback
             }
         };
+        let _ = outlet_raw.append_child(&new_leaf.raw_node);
+        *leaf_c.borrow_mut() = Some(new_leaf);
 
-        wrapper_raw
-            .append_child(&matched_component.raw_node)
-            .expect("Velo Router: Failed to append target route content");
-
-        *child_tracker.borrow_mut() = Some(matched_component);
+        clear_route_loading();
     }));
 
     view_wrapper
@@ -2066,13 +2235,14 @@ pub mod prelude {
 
     // Re-export router structures
     pub use crate::{
-        collected_routes, FRouter, Link, LinkProps, Route, RouteRegistration, Router,
+        app_layouts, boundary_fault, collected_routes, default_error_fallback, error_boundary,
+        FRouter, LayoutFn, Link, LinkProps, register_app_layouts, Route, RouteRegistration, Router,
         RouterProps,
     };
 
     // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]
     // procedural macros
-    pub use crate::{app, component, layout, not_found, page, route, routes, view};
+    pub use crate::{app, component, error, layout, loading, not_found, page, route, routes, view};
 
     // Re-export the shorthand convenience macros. `signal!` shares its name with
     // the `signal` value already re-exported above, so the macro rides along on
