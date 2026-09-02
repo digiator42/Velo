@@ -1060,6 +1060,74 @@ macro_rules! signal_value {
     }};
 }
 
+/// How an individual `class_names!` argument contributes to the joined class
+/// string. `None` (and empty strings) contribute nothing, so conditional
+/// classes fall out naturally:
+///
+/// ```rust,ignore
+/// class={ class_names!(
+///     "btn",
+///     is_active.then_some("is-active"),
+///     size.map(|s| format!("btn-{s}")),
+/// ) }
+/// ```
+pub trait ClassNames {
+    /// The class(es) this value contributes, or `None` to contribute nothing.
+    fn collect_class(&self) -> Option<String>;
+}
+
+impl ClassNames for String {
+    fn collect_class(&self) -> Option<String> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.clone())
+        }
+    }
+}
+
+impl ClassNames for &str {
+    fn collect_class(&self) -> Option<String> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.to_string())
+        }
+    }
+}
+
+impl<T: ClassNames> ClassNames for Option<T> {
+    fn collect_class(&self) -> Option<String> {
+        self.as_ref().and_then(|v| v.collect_class())
+    }
+}
+
+/// Joins a conditional class list into a single space-separated `class` string.
+/// `None` values and empty strings are skipped, so you can pass raw strings and
+/// `Option`s together. Pairs with `class={ class_names!(..) }` in `view!`.
+///
+/// ```rust,ignore
+/// view! {
+///     <div class={ class_names!(
+///         "card",
+///         if selected.get() { "card--selected" } else { "card--dim" },
+///         (n > 0).then_some("card--has-items"),
+///     )}> { /* ... */ } </div>
+/// }
+/// ```
+#[macro_export]
+macro_rules! class_names {
+    ($($arg:expr),* $(,)?) => {{
+        vec![
+            $( $crate::ClassNames::collect_class(&($arg)) ),*
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<String>>()
+        .join(" ")
+    }};
+}
+
 /// A wrapper around a real native browser DOM element
 #[derive(Clone)]
 pub struct DomNode {
@@ -1327,7 +1395,6 @@ impl DomNode {
 
         std::mem::forget(create_effect(move || {
             let value = f();
-            web_sys::console::log_1(&format!("PROBE reactive_style value={:?}", value).into());
             styles_c.borrow_mut().insert(property.clone(), value);
 
             let css: String = styles_c
@@ -1337,7 +1404,6 @@ impl DomNode {
                 .collect::<Vec<_>>()
                 .join("; ");
             let _ = el.set_attribute("style", &css);
-            web_sys::console::log_1(&format!("PROBE reactive_style SET css={:?} connected={}", css, el.is_connected()).into());
         }));
     }
 
@@ -2415,6 +2481,11 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::PlainViewValue;
     pub use crate::{signal_value, ViewValue};
+
+    // Re-export the class_names! join helper + its trait
+    #[doc(hidden)]
+    pub use crate::ClassNames;
+    pub use crate::class_names;
 
     // Re-export primary DOM manipulation types and helpers
     pub use crate::{

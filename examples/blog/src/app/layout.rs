@@ -22,7 +22,11 @@ pub fn layout(child: DomNode) -> DomNode {
                     <Link to={ paths::BLOG } label="Blog" active_class="is-active" />
                 </nav>
             </header>
-            <main>
+            <main class={ class_names!(
+                "page-main",
+                (clicks.get() > 0).then_some("page-main--snapped"),
+                (clicks.get() % 2 == 0).then_some("page-main--even"),
+            ) }>
                 { child }
             </main>
         </div>
