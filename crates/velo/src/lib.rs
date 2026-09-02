@@ -1587,6 +1587,46 @@ where
 
     container
 }
+
+/// Async lazy-loader returning a `DomNode`: shows `fallback` (a loading
+/// placeholder) immediately, then **swaps in** the real node once the async
+/// `loader` future resolves. This is the client-side analogue of Next.js
+/// `next/dynamic` / React `lazy` — the primitive and hook point for the
+/// route-based code-splitting roadmap (5.P8).
+///
+/// ```rust,ignore
+/// // A heavy page section that loads asynchronously with a visible spinner:
+/// <Suspense loading={ r.loading() } fallback={ view! { <p>"Loading…"</p> } }>
+///     { use_dynamic(|| async {
+///         velo::sleep(400).await;          // pretend to fetch a chunk
+///         view! { <Chart data={ data } /> }
+///     }) }
+/// </Suspense>
+/// ```
+///
+/// The returned node is attached to the live tree as soon as its caller
+/// renders, and the caller's own subtree stays reactive across the swap (the
+/// loader's resolved node is moved into place, not rebuilt).
+pub fn use_dynamic<F, Fut>(loader: F, fallback: DomNode) -> DomNode
+where
+    F: FnOnce() -> Fut + 'static,
+    Fut: std::future::Future<Output = DomNode> + 'static,
+{
+    let container = DomNode::display_contents();
+    let container_raw = container.raw_node.clone();
+    if let Err(_) = container_raw.append_child(&fallback.raw_node) {}
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let node = loader().await;
+        while let Some(child) = container_raw.first_child() {
+            let _ = container_raw.remove_child(&child);
+        }
+        let _ = container_raw.append_child(&node.raw_node);
+    });
+
+    container
+}
+
 /// container ID.
 ///
 /// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
@@ -2468,6 +2508,7 @@ pub mod prelude {
         signal_vec,
         sleep,
         use_context,
+        use_dynamic,
         with_context,
         ReadSignal,
         Resource,

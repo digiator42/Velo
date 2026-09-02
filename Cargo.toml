@@ -11,6 +11,7 @@ members = [
     "examples/error-overlay",
     "examples/memo-unwrap-check",
     "examples/arrow-closures",
+    "examples/dynamic",
     "examples/new-features",
 ]
 resolver = "2"
