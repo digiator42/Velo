@@ -7,6 +7,7 @@ members = [
     "examples/todo-app",
     "examples/async-dashboard",
     "examples/blog",
+    "examples/layout-children",
     "examples/memo-unwrap-check",
     "examples/arrow-closures",
     "examples/new-features",

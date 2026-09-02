@@ -149,6 +149,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "layout-children"
+version = "0.1.0"
+dependencies = [
+ "velo",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "memo-unwrap-check"
 version = "0.1.0"
 dependencies = [
