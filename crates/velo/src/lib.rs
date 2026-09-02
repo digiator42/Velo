@@ -23,7 +23,7 @@ pub use velo_macro::{app, component, error, layout, loading, not_found, page, ro
 // =============================================================================
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -40,6 +40,13 @@ thread_local! {
     static PENDING_EFFECTS: RefCell<Vec<Rc<RefCell<Effect>>>> = RefCell::new(Vec::new());
     /// Depth of nested `batch()` calls. 0 = no batch active.
     static BATCH_DEPTH: RefCell<usize> = RefCell::new(0);
+
+    // --- prefetch promise sharing ---
+    /// In-flight prefetch promises, keyed by URL. `prefetch` inserts the
+    /// `Promise` returned by `window.fetch(url)` so a subsequent `fetch` call
+    /// can await the same in-flight request instead of issuing a new one.
+    static PREFETCH_CACHE: RefCell<HashMap<String, js_sys::Promise>> =
+        RefCell::new(HashMap::new());
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +610,6 @@ impl<T> Clone for SignalVec<T> {
 // ---------------------------------------------------------------------------
 
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
 
 thread_local! {
     /// Stack of context maps. Index 0 is the root; components push/pop their own.
@@ -1054,10 +1060,21 @@ impl From<JsValue> for FetchError {
 /// } }
 /// ```
 pub async fn fetch(url: &str) -> Result<VeloResponse, JsValue> {
-    let window = web_sys::window()
-        .ok_or_else(|| JsValue::from_str("Velo: No global window found for fetch"))?;
-    let promise = window.fetch_with_str(url);
-    let response = wasm_bindgen_futures::JsFuture::from(promise).await?;
+    // If a prefetch for this URL is already in flight, reuse the same
+    // Promise so the navigation doesn't issue a second network request.
+    let prefetch_promise = PREFETCH_CACHE.with(|cache| cache.borrow_mut().remove(url));
+
+    let response = if let Some(promise) = prefetch_promise {
+        let future = wasm_bindgen_futures::JsFuture::from(promise);
+        future.await?
+    } else {
+        let window = web_sys::window()
+            .ok_or_else(|| JsValue::from_str("Velo: No global window found for fetch"))?;
+        let promise = window.fetch_with_str(url);
+        let future = wasm_bindgen_futures::JsFuture::from(promise);
+        future.await?
+    };
+
     let response: web_sys::Response =
         wasm_bindgen::JsCast::dyn_into(response).map_err(|_| {
             JsValue::from_str("Velo: fetch resolved to a non-Response object")
@@ -1119,9 +1136,13 @@ where
 /// pre-load the destination route's chunk instead of (or in addition to) the
 /// raw payload.
 pub fn prefetch(url: &str) {
+    let Some(window) = web_sys::window() else { return };
+    // window.fetch_with_str starts the request immediately. We hold the
+    // Promise so a later `fetch` can await the same in-flight request.
+    let promise = window.fetch_with_str(url);
     let url = url.to_string();
-    wasm_bindgen_futures::spawn_local(async move {
-        let _ = crate::fetch(&url).await;
+    PREFETCH_CACHE.with(|cache| {
+        cache.borrow_mut().insert(url, promise);
     });
 }
 

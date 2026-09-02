@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/velo",
+    "crates/velo-cli",
     "crates/macro",
     "examples/counter-spa", "examples/server-monitor-dashboard",
     "examples/features-demo",
