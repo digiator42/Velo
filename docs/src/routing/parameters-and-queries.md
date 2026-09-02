@@ -4,16 +4,22 @@
 
 ## 1. Dynamic Route Parameters (`:param`)
 
-Define parameterized path segments prefixed with `:`:
+With `app!` file routing, a dynamic param is a `[name]` folder under `src/app/`.
+The macro derives the route for you — no route table to maintain:
+
+```text
+src/app/
+└── users/
+    ├── page.rs          # "/users"
+    └── [id]/page.rs     # "/users/:id"
+```
 
 ```rust
+// src/app/users/[id]/page.rs
 use velo::prelude::*;
 
-fn home_page() -> DomNode {
-    view! { <h1>"Home Page"</h1> }
-}
-
-fn user_profile_page() -> DomNode {
+#[page]
+pub fn page() -> DomNode {
     let user_id = FRouter::use_param::<String>("id").unwrap_or_else(|| "unknown".into());
     view! {
         <div class="user-page">
@@ -21,10 +27,26 @@ fn user_profile_page() -> DomNode {
         </div>
     }
 }
+```
 
+The macro also emits a typed `paths::users_id(id)` builder in `velo_app::paths`,
+so you can link to the route with a runtime value:
+
+```rust
+use velo::prelude::*;
+// assumes: velo::app!() in src/lib.rs and src/app/users/[id]/page.rs
+<Link to={ velo_app::paths::users_id("42") } label="User 42" />
+```
+
+(In `src/lib.rs` after `use velo::prelude::*`, `velo_app` is in scope, so this
+is usually written `paths::users_id("42")`.)
+
+For a manual `routes!`/`Vec<Route>` table the same `:id` param applies:
+
+```rust
 let routes = routes! {
     "/" => home_page,
-    "/users/:id" => user_profile_page,
+    "/users/:id" => user_profile_page,   // manual form of /users/[id]/page.rs
 };
 ```
 

@@ -1,12 +1,31 @@
 # Quickstart Guide
 
-Build your first interactive Velo SPA in under 5 minutes.
+Build your first interactive Velo SPA in under 5 minutes using the recommended
+file-based `src/app/` workflow.
 
 ---
 
-## 1. Create Project Files
+## 1. Scaffold the Project
 
-Create an `index.html` file in your project root:
+Create `Cargo.toml` linking the `velo` crate (plus `wasm-bindgen` for the entry
+point):
+
+```toml
+[package]
+name = "my-velo-app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+velo = { path = "../../crates/velo" }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [] }
+```
+
+And an `index.html` entry shell (Trunk uses this as the build source of truth):
 
 ```html
 <!DOCTYPE html>
@@ -31,38 +50,53 @@ Create an `index.html` file in your project root:
 
 ---
 
-## 2. Write the Application Logic
+## 2. Write the Application
 
-In `src/lib.rs`, import Velo's prelude and define a reactive counter component:
+Create the app root at `src/lib.rs` and one page at `src/app/page.rs`. Velo's
+`app!` macro reads `src/app/` at compile time and turns each `page.rs` into a
+route, generating the `<Router>` wiring for you:
 
 ```rust
+// src/lib.rs
 use velo::prelude::*;
-use velo::mount_to_id;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::wasm_bindgen;
 
-fn app() -> DomNode {
-    // 1. Create a reactive signal with initial value 0
-    let (count, set_count) = create_signal(0);
-    
-    // Clone handle for the click event handler closure
-    let count_for_click = count.clone();
+velo::app!();                     // scan src/app/ + build routes
+
+#[wasm_bindgen(start)]
+pub fn main() {
+    run_app();
+}
+
+pub fn run_app() {
+    let shell = view! {
+        <div id="app">
+            <Router routes={ velo_app::routes() } />
+        </div>
+    };
+    mount(shell);
+}
+```
+
+```rust
+// src/app/page.rs — the "/" home page
+use velo::prelude::*;
+
+#[page]
+pub fn page() -> DomNode {
+    // 1. Create a reactive signal with a combined read+write handle
+    let count = signal!(0);
 
     // 2. Build the DOM structure with the view! macro
     view! {
         <div class="card">
             <h1>"Velo Quickstart"</h1>
             <p>"Current count: " <strong>{ count }</strong></p>
-            <button on:click={ move |_| set_count.set(count_for_click.get() + 1) }>
+            <button on:click={ move |_| count.set(count.get() + 1) }>
                 "Increment"
             </button>
         </div>
     }
-}
-
-// 3. Entry point called when WASM loads in browser
-#[wasm_bindgen(start)]
-pub fn main() {
-    mount_to_id("app", app());
 }
 ```
 
@@ -73,17 +107,48 @@ pub fn main() {
 Start the Trunk development server:
 
 ```bash
-trunk serve --open
+trunk serve --watch
 ```
 
-Trunk will compile your Rust code to WebAssembly, start a local web server (usually at `http://127.0.0.1:8080`), open your default browser, and watch for file changes to provide hot reloading!
-
-Add `--watch` if you want it to rebuild and reload the browser on every save. See [Dev Server, Error Overlay & HMR](dev-server-and-hmr.md) for the full dev loop, including Velo's on-page compile-error overlay.
+Trunk compiles your Rust to WebAssembly, serves `index.html` at
+`http://127.0.0.1:8080`, opens your browser, and **auto-reloads on every save**.
+Velo's built-in dev error overlay shows a full Rust diagnostic (`file:line:col`)
+right on the page when the build fails. See
+[Dev Server, Error Overlay & HMR](dev-server-and-hmr.md) for the full loop.
 
 ---
 
-## 4. How It Works
+## 4. Add a Second Page
 
-* `{ count }` in the template subscribes directly to the `count` signal. The macro automatically unwraps the value without needing `.get()`.
-* When the button is clicked, `set_count.set(...)` notifies subscribers.
-* Only the inner text node containing the count number changes in the real browser DOM — the header, container card, and button remain completely untouched.
+Add `src/app/about/page.rs`:
+
+```rust
+use velo::prelude::*;
+
+#[page]
+pub fn page() -> DomNode {
+    view! { <h1>"About"</h1> }
+}
+```
+
+`app!` automatically generates a typed helper in `velo_app::paths`, so you can
+link to it with compile-time checking (`route_path!` is a typo-proof path
+literal; `paths::*` are path *builders*). More in
+[Typed Navigation](../routing/overview.md#3-typed-navigation-route_path--compile-checked-to).
+
+```rust
+use velo::prelude::*;
+
+// inside a #[page] or #[layout] view:
+<Link to={ route_path!("/about") } label="About" />
+```
+
+---
+
+## 5. How It Works
+
+* `{ count }` in the template subscribes directly to the `count` signal; the
+  macro unwraps it without needing `.get()`.
+* On click, `count.set(...)` notifies subscribers.
+* Only the inner text node containing the count changes in the real browser
+  DOM — the header, card, and button stay untouched.

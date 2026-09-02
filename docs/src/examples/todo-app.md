@@ -56,10 +56,18 @@ pub fn TaskRow(task: Task) {
 
 ## 3. Pages & Routing
 
+With `app!` file routing the `/tasks` page lives at `src/app/tasks/page.rs` and
+is annotated `#[page]`. The macro builds the route table and a typed
+`paths::*` helper for it:
+
 ```rust
-fn tasks_page() -> DomNode {
+// src/app/tasks/page.rs
+use velo::prelude::*;
+
+#[page]
+pub fn page() -> DomNode {
     let state = use_context::<AppState>().expect("AppState in context");
-    let input = signal(String::new());
+    let input = signal!(String::new());
 
     let state_add = state.clone();
     let input_add = input.clone();
@@ -97,3 +105,29 @@ fn tasks_page() -> DomNode {
     }
 }
 ```
+
+The app root wires everything together with `velo::app!()` and a `<Router>`:
+
+```rust
+// src/lib.rs
+use velo::prelude::*;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+velo::app!();
+
+#[wasm_bindgen(start)]
+pub fn main() { run_app(); }
+
+pub fn run_app() {
+    let shell = view! {
+        <div id="app">
+            <Router routes={ velo_app::routes() } />
+        </div>
+    };
+    mount(shell);
+}
+```
+
+> The real `examples/todo-app` predates file routing and uses a manual
+> `Vec<Route>` table. Both styles work; the `app!`/`#[page]` form is the
+> recommended one and is shown here.

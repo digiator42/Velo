@@ -1,24 +1,34 @@
-# Signals (Split Read & Write)
+# Signals
 
 Signals are the primary atomic unit of reactive state in Velo.
 
 ---
 
-## 1. Creating a Split Signal
+## 1. Creating a Signal with `signal!`
 
-Use `create_signal(initial_value)` to create a reactive value. It returns a tuple containing a read handle (`ReadSignal<T>`) and a write handle (`WriteSignal<T>`):
+Use `signal!(initial_value)` to create a reactive value with a single combined
+read+write handle (`RwSignal<T>`):
 
 ```rust
 use velo::prelude::*;
 
-let (count, set_count) = create_signal(0);
+let count = signal!(0);
 ```
+
+`signal!` is shorthand for `signal(value)`, which wraps `RwSignal<T>`. One handle
+reads *and* writes, so you clone it once and move it into closures.
+
+> `create_signal(value)` still exists and returns the older split `(ReadSignal,
+> WriteSignal)` tuple pair. Prefer `signal!` for new code — the single `RwSignal`
+> is more ergonomic and removes the need to clone two handles. See
+> [RwSignal & Ergonomic Handles](rw-signals.md).
 
 ---
 
 ## 2. Reading Signal Values (`.get()`)
 
-Calling `.get()` returns a clone of the current value and registers the caller as a dependency if called inside an active effect or memo computation:
+Calling `.get()` returns a clone of the current value and registers the caller
+as a dependency if called inside an active effect or memo computation:
 
 ```rust
 let current_val = count.get();
@@ -38,16 +48,17 @@ view! {
 
 ### Replacing the Value with `.set()`
 ```rust
-set_count.set(10);
+count.set(10);
 ```
 
 ### Mutating In-Place with `.update()`
-For complex structs or collections where you want to mutate the existing value in-place:
+For complex structs or collections where you want to mutate the existing value
+in-place:
 
 ```rust
-let (user, set_user) = create_signal(User { name: "Alice".into(), age: 30 });
+let user = signal!(User { name: "Alice".into(), age: 30 });
 
-set_user.update(|u| {
+user.update(|u| {
     u.age += 1;
 });
 ```
@@ -56,13 +67,13 @@ set_user.update(|u| {
 
 ## 4. Ownership & Clones
 
-Both `ReadSignal<T>` and `WriteSignal<T>` implement `Clone`. Cloning a signal handle is cheap — it only clones an internal `Rc` reference to the shared signal cell:
+`RwSignal<T>` implements `Clone`. Cloning a signal handle is cheap — it only
+clones an internal `Rc` reference to the shared signal cell:
 
 ```rust
 let count_for_button = count.clone();
-let set_count_for_button = set_count.clone();
 
 let on_click = move |_| {
-    set_count_for_button.set(count_for_button.get() + 1);
+    count_for_button.set(count_for_button.get() + 1);
 };
 ```
