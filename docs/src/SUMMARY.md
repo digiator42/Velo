@@ -39,13 +39,17 @@
 # Client-Side Routing
 - [Routing Overview](routing/overview.md)
 - [Router & Route Configuration](routing/router-and-routes.md)
+- [Layouts & Nesting](routing/layouts-and-nesting.md)
 - [Links & Client-Side Navigation](routing/links-and-navigation.md)
 - [Route Parameters & Query Strings](routing/parameters-and-queries.md)
+- [Suspense & Loading States](routing/suspense-and-loading.md)
+- [Lazy Loading & Code Splitting](routing/code-splitting-and-lazy-loading.md)
 
 # DOM & Lifecycle
 - [Mounting the Application](dom-and-lifecycle/mounting.md)
 - [Effect Lifecycle & Resource Cleanup](dom-and-lifecycle/effect-cleanup.md)
 - [The `DomNode` API](dom-and-lifecycle/dom-node-api.md)
+- [Error Boundaries](dom-and-lifecycle/error-boundaries.md)
 
 # Best Practices & Architecture
 - [Zero-Clone Ergonomics & Ownership](best-practices/zero-clone-patterns.md)
