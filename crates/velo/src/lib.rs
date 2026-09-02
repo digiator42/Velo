@@ -2216,6 +2216,103 @@ pub fn Router(props: RouterProps) -> DomNode {
     view_wrapper
 }
 
+/// Boundary-safe active-route match for `<Link active_class>`.
+///
+/// `to == "/"` activates only on the exact root path; any other `to` activates
+/// when `current == to` or `current` is a deeper descendant of `to`
+/// (i.e. `current.starts_with(to + "/")`), so `/blog` matches `/blog` and
+/// `/blog/:slug` but never `/blogxyz`.
+pub fn is_path_active(current: &str, to: &str) -> bool {
+    if to == "/" {
+        return current == "/";
+    }
+    if current == to {
+        return true;
+    }
+    let prefix = if to.ends_with('/') {
+        to.to_string()
+    } else {
+        format!("{to}/")
+    };
+    current.starts_with(&prefix)
+}
+
+// ---------------------------------------------------------------------------
+// <Head> — reactive per-route document title & meta (§5.P6)
+// ---------------------------------------------------------------------------
+//
+// Drop a `<Head>` inside any route (or layout) to set `document.title` (and
+// optional `<meta name>` tags) whenever that node renders. Because the Router
+// re-renders the matched leaf on navigation, a `<Head>` placed in each route
+// updates the browser title/meta on every navigation — the client-side SPA
+// analogue of Next.js `layout.tsx`/`page.tsx` metadata.
+
+/// Props for [`Head`]: `<Head title="My App" meta={ vec![("description", "...")] } />`.
+#[allow(non_snake_case)]
+pub struct HeadProps {
+    /// The document title to set. Omit to leave `document.title` untouched.
+    pub title: Option<String>,
+    /// Optional `(name, content)` pairs rendered as `<meta name=.. content=..>`.
+    pub meta: Option<Vec<(String, String)>>,
+}
+
+thread_local! {
+    // Names of `data-velo-meta` elements owned by the most recent <Head>, so a
+    // fresh navigation can clear the previous route's tags instead of stacking.
+    static HEAD_META_TAGS: RefCell<Vec<web_sys::Element>> = RefCell::new(Vec::new());
+}
+
+#[allow(non_snake_case)]
+pub fn Head(props: HeadProps) -> DomNode {
+    let HeadProps { title, meta } = props;
+
+    if let Some(title) = title {
+        let doc = document();
+        if let Some(t) = doc.query_selector("title").ok().flatten() {
+            t.set_text_content(Some(&title));
+        } else {
+            let t = doc.create_element("title").expect("Velo: create title element");
+            t.set_text_content(Some(&title));
+            if let Some(head) = doc.query_selector("head").ok().flatten() {
+                head.append_child(&t).ok();
+            }
+        }
+    }
+
+    if let Some(meta_list) = meta {
+        let doc = document();
+        let head = doc
+            .query_selector("head")
+            .ok()
+            .flatten()
+            .expect("Velo: document head");
+        // Remove tags left by a previous <Head> navigation so metas never stack.
+        HEAD_META_TAGS.with(|tags| {
+            let old = std::mem::take(&mut *tags.borrow_mut());
+            for el in old {
+                let _ = el.remove();
+            }
+        });
+        let holder: Vec<web_sys::Element> = meta_list
+            .into_iter()
+            .map(|(name, content)| {
+                let m = doc
+                    .create_element("meta")
+                    .expect("Velo: create meta element");
+                m.set_attribute("name", &name).ok();
+                m.set_attribute("content", &content).ok();
+                m.set_attribute("data-velo-meta", "").ok();
+                head.append_child(&m).ok();
+                m
+            })
+            .collect();
+        HEAD_META_TAGS.with(|tags| *tags.borrow_mut() = holder);
+    }
+
+    // <Head> never renders anything into <body>.
+    DomNode::empty()
+}
+
 /// Props for [`Link`]: `<Link to="..." label="..." />` or `<Link to="...">Children</Link>`.
 /// Supports active state styling via the `active_class` prop.
 #[allow(non_snake_case)]
@@ -2250,13 +2347,15 @@ pub fn Link(props: LinkProps) -> DomNode {
         anchor.append(&text_content);
     }
 
-    // Active state: if active_class provided, reactively add/remove it based on current route
+    // Active state: if active_class provided, reactively add/remove it based on
+    // the current route. Matching is boundary-safe: `/blog` only activates for
+    // `/blog` or `/blog/...`, never `/blogxyz`. Root (`/`) activates only when
+    // the current path is exactly `/`.
     if let Some(active_class) = active_class {
         let to = to.to_string();
         anchor.reactive_attribute("class", move || {
             let current = FRouter::use_route();
-            // Simple prefix match for active state (can be enhanced later)
-            if current == to || (current.starts_with(&to) && to != "/") {
+            if is_path_active(&current, &to) {
                 active_class.to_string()
             } else {
                 String::new()
@@ -2325,8 +2424,8 @@ pub mod prelude {
     // Re-export router structures
     pub use crate::{
         app_layouts, boundary_fault, collected_routes, default_error_fallback, error_boundary,
-        FRouter, LayoutFn, Link, LinkProps, register_app_layouts, Route, RouteRegistration, Router,
-        RouterProps,
+        FRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, register_app_layouts,
+        Route, RouteRegistration, Router, RouterProps,
     };
 
     // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]

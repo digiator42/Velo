@@ -10,6 +10,7 @@ pub fn page() -> DomNode {
     let title = format!("Post: {slug}");
     view! {
         <article class="post">
+            <Head title={ title.clone() } meta={ vec![("description".to_string(), format!("Blog post {slug}"))] } />
             <h1>{ title }</h1>
             <p>"You are reading “" { slug } "”."</p>
             <p><Link to={ paths::BLOG } label={ "Back to posts" } /></p>

@@ -18,8 +18,8 @@ pub fn layout(child: DomNode) -> DomNode {
                     "layout count: " { clicks }
                 </button>
                 <nav>
-                    <Link to={ paths::INDEX } label="Home" />
-                    <Link to={ paths::BLOG } label="Blog" />
+                    <Link to={ paths::INDEX } label="Home" active_class="is-active" />
+                    <Link to={ paths::BLOG } label="Blog" active_class="is-active" />
                 </nav>
             </header>
             <main>

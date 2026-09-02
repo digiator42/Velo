@@ -589,6 +589,47 @@ impl ToTokens for VNode {
                         return;
                     }
 
+                    // `Head` is a known builtin whose `title` / `meta` fields are
+                    // `Option<..>`. Mirror `Link`'s handling so a string-literal
+                    // `title="My App"` is wrapped in `Some(..)` automatically,
+                    // while a braced `meta={ vec![("description", "...")] }`
+                    // passes through as-is.
+                    if component_name == "Head" {
+                        let mut title_val: TokenStream2 = quote! { None };
+                        let mut meta_val: TokenStream2 = quote! { None };
+                        let mut has_title = false;
+                        let mut has_meta = false;
+                        for attr in attributes {
+                            let v = &attr.value;
+                            if attr.key == "title" {
+                                has_title = true;
+                                // `HeadProps.title` is `Option<String>`: string
+                                // literals (`&str`) and braced `String`s alike pass
+                                // through `.into()`, wrapped in `Some(..)`.
+                                title_val = quote! { Some((#v).into()) };
+                            } else if attr.key == "meta" {
+                                has_meta = true;
+                                meta_val = quote! { #v };
+                            }
+                        }
+                        // `HeadProps.meta` is `Option<Vec<(String, String)>>`, so a
+                        // braced `meta={ vec![..] }` (or array) needs `Some(..)`.
+                        let title_final: TokenStream2 = if has_title { title_val } else { quote! { None } };
+                        let meta_final: TokenStream2 = if has_meta {
+                            quote! { Some(#meta_val) }
+                        } else {
+                            quote! { None }
+                        };
+                        tokens.extend(quote! {
+                            velo::Head(velo::HeadProps {
+                                title: #title_final,
+                                meta: #meta_final,
+                            })
+                        });
+                        return;
+                    }
+
+
                     // All other components use a generated `<Name>Props` struct.
                     // `#[component]` synthesizes `NameProps` with one field per
                     // parameter, so attributes are matched BY NAME and may appear
