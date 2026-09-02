@@ -2471,8 +2471,10 @@ pub fn Router(props: RouterProps) -> DomNode {
         // 2. Layout shell: rebuild ONLY when the chain identity changes.
         //    Same chain (e.g. `/blog/:slug` -> `/blog/:slug`) -> keep the
         //    existing mounted shell; a layout-boundary change tears it down.
+        //    On the first run (shell_c is None), always append the shell so the
+        //    leaf outlet is actually inside the wrapper and visible in the DOM.
         let chain = matched.map(|r| app_layouts(r.path)).unwrap_or_default();
-        if chain != *chain_c.borrow() {
+        if chain != *chain_c.borrow() || shell_c.borrow().is_none() {
             if let Some(old) = shell_c.borrow().as_ref() {
                 let _ = wrapper_raw.remove_child(&old.raw_node);
             }
