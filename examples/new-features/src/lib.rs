@@ -136,6 +136,9 @@ fn router_demo() -> DomNode {
                 <Link to="/users/42" label="User 42" />
                 <Link to="/about" label="About" />
                 <Link to="/empty" label="Empty" />
+                // `prefetch` (bare boolean prop) pre-warms `/about`'s payload
+                // on hover/focus so navigation feels instant.
+                <Link to="/about" label="About (prefetch)" prefetch />
             </nav>
             <Router routes={collected_routes()} />
         </div>

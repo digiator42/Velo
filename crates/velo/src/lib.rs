@@ -935,6 +935,197 @@ pub async fn sleep(ms: u32) {
 }
 
 // =============================================================================
+// `velo::fetch` — ergonomic JS `fetch` sugar
+//
+// Wraps `window.fetch` behind an awaitable future (mirroring the JS
+// `fetch(url).then(r => r.text())` feel, but in Rust), so developers can
+// `.await` it directly inside Velo's `async () => {}` event/reactive handlers.
+// =============================================================================
+
+/// A `window.fetch` response, mirroring the JS `Response` ergonomics.
+///
+/// Obtained via [`fetch`]. Call `.text()` or `.json()` to read the body.
+#[derive(Clone)]
+pub struct VeloResponse {
+    inner: web_sys::Response,
+}
+
+impl VeloResponse {
+    fn from_response(resp: web_sys::Response) -> Self {
+        Self { inner: resp }
+    }
+
+    /// HTTP status code (e.g. `200`, `404`).
+    pub fn status(&self) -> u16 {
+        self.inner.status()
+    }
+
+    /// `true` for statuses in the 200–299 range.
+    pub fn ok(&self) -> bool {
+        self.inner.ok()
+    }
+
+    /// The status text (e.g. `"OK"` / `"Not Found"`).
+    pub fn status_text(&self) -> String {
+        self.inner.status_text()
+    }
+
+    /// The final URL the request was served from (after any redirects).
+    pub fn url(&self) -> String {
+        self.inner.url()
+    }
+
+    /// Access a response header by name.
+    pub fn header(&self, name: &str) -> Option<String> {
+        self.inner
+            .headers()
+            .get(name)
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty())
+    }
+
+    /// Read the entire body as text.
+    pub async fn text(self) -> Result<String, JsValue> {
+        let text_promise = self.inner.text()?;
+        let text = wasm_bindgen_futures::JsFuture::from(text_promise).await?;
+        Ok(text.as_string().ok_or_else(|| {
+            JsValue::from_str("Velo: response.body.text() returned a non-string value")
+        })?)
+    }
+
+    /// Read the body as JSON.
+    ///
+    /// Returns the raw `js_sys::JsValue` holding the parsed value. For typed
+    /// decoding use the serde-backed [`fetch_json`] helper (requires the
+    /// `json` feature) instead.
+    pub async fn json(self) -> Result<JsValue, JsValue> {
+        let json_promise = self.inner.json()?;
+        wasm_bindgen_futures::JsFuture::from(json_promise).await
+    }
+}
+
+/// An error raised while fetching, reading, or decoding a [`VeloResponse`].
+#[derive(Debug, Clone)]
+pub enum FetchError {
+    /// `window.fetch` itself rejected (network / CORS / security error).
+    Network(String),
+    /// The response returned a non-2xx status.
+    Status { code: u16, reason: String },
+    /// The response body could not be decoded as JSON.
+    Decode(String),
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FetchError::Network(msg) => write!(f, "fetch network error: {msg}"),
+            FetchError::Status { code, reason } => {
+                write!(f, "fetch returned {code} {reason}")
+            }
+            FetchError::Decode(msg) => write!(f, "fetch JSON decode error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for FetchError {}
+
+impl From<JsValue> for FetchError {
+    fn from(v: JsValue) -> Self {
+        FetchError::Network(
+            v.as_string()
+                .unwrap_or_else(|| "unknown JS fetch error".to_string()),
+        )
+    }
+}
+
+/// Awaitable `window.fetch` wrapper.
+///
+/// Returns a [`VeloResponse`] whose body can be read with `.text()` or
+/// `.json()`. Can be `.await`ed directly inside Velo's `async () => {}`
+/// handlers; pairs with [`fetch_json`] for typed JSON.
+///
+/// ```rust,ignore
+/// on:click={ async () => {
+///     let resp = velo::fetch("/api/health").await.unwrap();
+///     if resp.ok() {
+///         log!("up: {}", resp.status());
+///     }
+/// } }
+/// ```
+pub async fn fetch(url: &str) -> Result<VeloResponse, JsValue> {
+    let window = web_sys::window()
+        .ok_or_else(|| JsValue::from_str("Velo: No global window found for fetch"))?;
+    let promise = window.fetch_with_str(url);
+    let response = wasm_bindgen_futures::JsFuture::from(promise).await?;
+    let response: web_sys::Response =
+        wasm_bindgen::JsCast::dyn_into(response).map_err(|_| {
+            JsValue::from_str("Velo: fetch resolved to a non-Response object")
+        })?;
+    Ok(VeloResponse::from_response(response))
+}
+
+/// Fetch a JSON resource and decode it into typed data — the Rust analogue of
+/// `await (await fetch(url)).json()`. Pairs with Velo's `async () => {}`
+/// handlers for a seamless Next.js-like data-fetch feel:
+///
+/// ```rust,ignore
+/// #[derive(serde::Deserialize)]
+/// struct User { name: String, age: u8 }
+///
+/// let data = create_resource(|| async {
+///     velo::fetch_json::<User>("/api/users/1").await.unwrap()
+/// });
+/// ```
+#[cfg(feature = "json")]
+pub async fn fetch_json<T>(url: &str) -> Result<T, FetchError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let window = web_sys::window()
+        .ok_or_else(|| FetchError::Network("No window for fetch".into()))?;
+    let promise = window.fetch_with_str(url);
+    let response = wasm_bindgen_futures::JsFuture::from(promise).await?;
+    let response: web_sys::Response =
+        wasm_bindgen::JsCast::dyn_into(response).map_err(|_| {
+            FetchError::Decode("fetch resolved to a non-Response".into())
+        })?;
+
+    if !response.ok() {
+        return Err(FetchError::Status {
+            code: response.status(),
+            reason: response.status_text(),
+        });
+    }
+
+    let json_promise = response.json()?;
+    let json: JsValue = wasm_bindgen_futures::JsFuture::from(json_promise).await?;
+    json.into_serde().map_err(|e| FetchError::Decode(e.to_string()))
+}
+
+// =============================================================================
+// `velo::prefetch` — warm up a resource before the user navigates
+// =============================================================================
+
+/// Fire-and-forget pre-warm of a URL's payload (used by `<Link prefetch />`).
+///
+/// Issues a low-effort background `fetch(url)` so the resource is in the
+/// browser's HTTP cache by the time the user navigates there, making route
+/// data load instantly. The result is intentionally discarded and never blocks;
+/// any failure is silently ignored.
+///
+/// This is the client-side hook point for route warm-up: once real per-`.wasm`
+/// code-splitting lands, `<Link prefetch />` will use this same entry point to
+/// pre-load the destination route's chunk instead of (or in addition to) the
+/// raw payload.
+pub fn prefetch(url: &str) {
+    let url = url.to_string();
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = crate::fetch(&url).await;
+    });
+}
+
+// =============================================================================
 // =============================================================================
 // PART 2 — DOM  (formerly `velo_dom`)
 // =============================================================================
@@ -2420,7 +2611,8 @@ pub fn Head(props: HeadProps) -> DomNode {
 }
 
 /// Props for [`Link`]: `<Link to="..." label="..." />` or `<Link to="...">Children</Link>`.
-/// Supports active state styling via the `active_class` prop.
+/// Supports active state styling via the `active_class` prop and on-hover route
+/// pre-warm-up via the `prefetch` prop.
 #[allow(non_snake_case)]
 pub struct LinkProps {
     /// Destination path. Accepts a typed `paths::*` builder from `velo::app!`
@@ -2432,13 +2624,23 @@ pub struct LinkProps {
     pub children: Option<Vec<DomNode>>,
     /// Optional CSS class to apply when this link's route is active.
     pub active_class: Option<&'static str>,
+    /// When `true`, hovering over (or focusing) the link pre-warms the
+    /// destination's payload in the background so navigation feels instant.
+    /// Defaults to `false`.
+    pub prefetch: bool,
 }
 
 /// Ergonomic Link component that allows clean macro nesting: <Link to="...">Children</Link>
 /// Supports active state styling via `active_class` prop.
 #[allow(non_snake_case)]
 pub fn Link(props: LinkProps) -> DomNode {
-    let LinkProps { to, label, children, active_class } = props;
+    let LinkProps {
+        to,
+        label,
+        children,
+        active_class,
+        prefetch: prefetch_enabled,
+    } = props;
     let anchor = DomNode::element("a");
     let href = to.clone();
     anchor.reactive_attribute("href", move || href.clone());
@@ -2467,6 +2669,15 @@ pub fn Link(props: LinkProps) -> DomNode {
                 String::new()
             }
         });
+    }
+
+    // Prefetch: on hover/focus, warm up the destination's payload in the
+    // background the first time (so it's cached before a click navigates).
+    if prefetch_enabled {
+        let to = to.clone();
+        let to_focus = to.clone();
+        anchor.on("mouseenter", move |_e| prefetch(&to));
+        anchor.on("focus", move |_e| prefetch(&to_focus));
     }
 
     anchor.on("click", move |event| {
@@ -2539,6 +2750,11 @@ pub mod prelude {
         FRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, navigate_to,
         register_app_layouts, Route, RouteRegistration, Router, RouterProps,
     };
+
+    // Re-export the JS `fetch` sugar (fetch / response body / typed JSON)
+    pub use crate::{fetch, prefetch, FetchError, VeloResponse};
+    #[cfg(feature = "json")]
+    pub use crate::fetch_json;
 
     // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]
     // procedural macros

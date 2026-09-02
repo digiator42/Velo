@@ -15,6 +15,14 @@ wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
 percent-encoding = "2.1"
 inventory = "0.3"
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+# Typed `fetch_json::<T>(url)` / `response.json::<T>()` via serde JSON parsing.
+# Off by default to keep the WASM core small; enable it only when you need
+# typed payload decoding from the `velo::fetch` wrapper.
+json = ["serde", "serde_json", "wasm-bindgen/serde-serialize"]
 
 [dependencies.web-sys]
 workspace = true
@@ -39,7 +47,15 @@ features = [
     "DataTransferItemList",
     "Headers",
     "Request",
+    "RequestInit",
+    "RequestMode",
+    "RequestCredentials",
+    "RequestCache",
+    "RequestRedirect",
     "Response",
+    "ResponseInit",
+    "AbortController",
+    "AbortSignal",
     "History",
     "Location",
     "CssStyleDeclaration",

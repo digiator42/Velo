@@ -312,23 +312,34 @@ impl Parse for VNode {
                 key = format!("{}:{}", key, sub_key);
             }
 
-            input.parse::<Token![=]>()?;
-
-            let value: Expr = if input.peek(syn::token::Brace) {
-                let content;
-                syn::braced!(content in input);
-                if key.starts_with("on:") {
-                    // `on:click={() => set_count.update(|c| c + 1)}` sugar,
-                    // expanding to `move |_evt: web_sys::Event| ..` / `move |e| ..`.
-                    parse_event_handler_value(&content)?
+            // Value-less boolean attribute (`<input disabled />`, `<Link prefetch />`)
+            // parses as `key = true`; otherwise read `key = value`.
+            let value: Expr = if input.peek(Token![=]) {
+                input.parse::<Token![=]>()?;
+                if input.peek(syn::token::Brace) {
+                    let content;
+                    syn::braced!(content in input);
+                    if key.starts_with("on:") {
+                        // `on:click={() => set_count.update(|c| c + 1)}` sugar,
+                        // expanding to `move |_evt: web_sys::Event| ..` / `move |e| ..`.
+                        parse_event_handler_value(&content)?
+                    } else {
+                        content.parse()?
+                    }
                 } else {
-                    content.parse()?
+                    let lit: LitStr = input.parse()?;
+                    Expr::Lit(syn::ExprLit {
+                        attrs: vec![],
+                        lit: syn::Lit::Str(lit),
+                    })
                 }
             } else {
-                let lit: LitStr = input.parse()?;
                 Expr::Lit(syn::ExprLit {
                     attrs: vec![],
-                    lit: syn::Lit::Str(lit),
+                    lit: syn::Lit::Bool(syn::LitBool {
+                        value: true,
+                        span: proc_macro2::Span::call_site(),
+                    }),
                 })
             };
 
@@ -560,6 +571,7 @@ impl ToTokens for VNode {
                         let mut to_val: TokenStream2 = quote! {};
                         let mut label_val: TokenStream2 = quote! { None };
                         let mut class_val: TokenStream2 = quote! { None };
+                        let mut prefetch_val: TokenStream2 = quote! { false };
                         for attr in attributes {
                             let v = &attr.value;
                             let v_optional: TokenStream2 = match v {
@@ -604,6 +616,10 @@ impl ToTokens for VNode {
                                 label_val = v_optional;
                             } else if attr.key == "active_class" {
                                 class_val = v_optional;
+                            } else if attr.key == "prefetch" {
+                                // `<Link prefetch />` → `true` (bare bool attr);
+                                // `<Link prefetch={expr} />` → the bool expr.
+                                prefetch_val = quote! { #v };
                             }
                         }
                         let children_val: TokenStream2 = if children.is_empty() {
@@ -616,6 +632,7 @@ impl ToTokens for VNode {
                                 to: #to_val,
                                 label: #label_val,
                                 active_class: #class_val,
+                                prefetch: #prefetch_val,
                                 children: #children_val,
                             })
                         });
