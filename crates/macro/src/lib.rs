@@ -130,6 +130,10 @@ fn reactive_value(v: &syn::Expr) -> proc_macro2::TokenStream {
     }
 }
 
+// A proc-macro AST is built transiently at compile time, so minimizing the
+// in-memory size of variants is not worth contorting the AST (the large `Expr`
+// and recursive `VNode` fields make the enum inherently big).
+#[allow(clippy::large_enum_variant)]
 enum VNode {
     Element {
         tag_name: String,
@@ -139,7 +143,7 @@ enum VNode {
     StaticText(String),
     ReactiveExpression(Expr),
     ForLoop {
-        pat: syn::Pat,
+        pat: Box<syn::Pat>,
         expr: Expr,
         key: Option<Expr>,
         body: Vec<VNode>,
@@ -219,7 +223,7 @@ impl Parse for VNode {
                 }
 
                 return Ok(VNode::ForLoop {
-                    pat,
+                    pat: Box::new(pat),
                     expr,
                     key,
                     body,
