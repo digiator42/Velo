@@ -1,8 +1,17 @@
 /*!
- * Velo dev error overlay — the canonical template.
+ * Velo dev error overlay — REFERENCE COPY (kept human-readable).
  *
- * Drop this single <script> into your index.html and it renders Trunk's
- * compile failures as a styled on-page panel during `trunk serve --watch`:
+ * The canonical version ships BUILT-IN and is compiled into the `velo` crate
+ * as the `DEV_OVERLAY_JS` constant (see crates/velo/src/lib.rs,
+ * `install_dev_overlay()`), installed automatically by `mount()` — so new
+ * projects need NO copy-paste, no script tag, and no asset wiring.
+ *
+ * This file is the editable, stand-alone twin of that built-in, kept for
+ * reference / manual use. If you change the behavior here, mirror it into the
+ * crate constant so the built-in stays in sync.
+ *
+ * Drop this single <script> into your index.html to use the stand-alone copy
+ * under `trunk serve --watch`:
  *
  *     <script src="velo-error-overlay.js"></script>
  *

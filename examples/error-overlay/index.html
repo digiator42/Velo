@@ -11,10 +11,8 @@
         button:hover { background: #0284c7; color: white; }
         code { background: #334155; padding: 2px 6px; border-radius: 4px; color: #a5f3fc; }
     </style>
-    <!-- Velo dev-only error overlay: hide this tag in prod, or keep it — it is
-         inert whenever the app is not served by `trunk serve`. -->
-    <script src="velo-error-overlay.js"></script>
-    <link data-trunk rel="copy-file" href="velo-error-overlay.js"/>
+    <!-- No overlay wiring needed: Velo's built-in dev error overlay is
+         installed automatically by mount() whenever trunk serve runs it. -->
     <link rel="data-trunk" href="Cargo.toml" data-type="rust"/>
 </head>
 <body>

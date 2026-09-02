@@ -1579,6 +1579,7 @@ impl Drop for RootHandle {
 /// // later: handle.unmount();
 /// ```
 pub fn mount(root: DomNode) -> RootHandle {
+    install_dev_overlay();
     let body = document()
         .body()
         .expect("Velo: document has no body — are you running in a browser?");
@@ -1597,10 +1598,98 @@ pub fn mount(root: DomNode) -> RootHandle {
 /// let handle = velo::mount_at(&div, app);
 /// ```
 pub fn mount_at(target: &web_sys::Node, root: DomNode) -> RootHandle {
+    install_dev_overlay();
     target
         .append_child(&root.raw_node)
         .expect("Velo: Failed to mount root node into target");
     RootHandle { root }
+}
+
+// ---------------------------------------------------------------------------
+// Built-in dev error overlay  (§5.P10)
+// ---------------------------------------------------------------------------
+//
+// The overlay is injected at runtime on the first `mount()`/`mount_at()`. It
+// subscribes to Trunk's dev WebSocket (`/.well-known/trunk/ws`) and surfaces
+// compile failures as a styled panel instead of a dead tab. It is a no-op
+// whenever the app is NOT served by `trunk serve` (the WebSocket never
+// connects), so it is safe to install unconditionally and requires zero
+// per-project setup — no script tag, no asset copy, no config.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+static DEV_OVERLAY_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+/// The compiled-in JS for Velo's dev error overlay. A human-readable,
+/// editable reference copy lives at `docs/templates/velo-error-overlay.js`;
+/// keep the two in sync if behavior changes.
+const DEV_OVERLAY_JS: &str = r##"(() => {
+  if (window.__veloDevOverlay) return;
+  window.__veloDevOverlay = true;
+  const guardStyle = document.createElement("style");
+  guardStyle.textContent = 'div[style*="rgba(222, 222, 222, 0.5)"]{display:none !important;}';
+  document.head.appendChild(guardStyle);
+  let panel = null;
+  const wsUrl = () => {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    return proto + location.host + "/.well-known/trunk/ws";
+  };
+  const buildPanel = () => {
+    const root = document.createElement("div");
+    root.id = "velo-dev-overlay";
+    root.setAttribute("style", "position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:2rem;background:rgba(2,6,23,.72);backdrop-filter:blur(6px);font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;");
+    const card = document.createElement("div");
+    card.setAttribute("style", "max-width:min(880px,100%);width:100%;max-height:85vh;overflow:auto;border:1px solid #7f1d1d;border-radius:14px;background:#111827;box-shadow:0 24px 60px rgba(0,0,0,.5);");
+    const head = document.createElement("div");
+    head.setAttribute("style", "display:flex;align-items:center;gap:.75rem;padding:1rem 1.25rem;border-bottom:1px solid #374151;background:#1f2937;border-radius:14px 14px 0 0;");
+    const icon = document.createElement("span");
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566z" fill="#f87171"/><path d="M8 5.5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 6.495A.905.905 0 0 1 8 5.5zm.002 5.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" fill="#111827"/></svg>';
+    const title = document.createElement("span");
+    title.textContent = "Build failed";
+    title.setAttribute("style", "font-size:1.05rem;font-weight:700;color:#fca5a5");
+    const close = document.createElement("button");
+    close.type = "button"; close.setAttribute("aria-label", "Dismiss"); close.textContent = "\u00d7";
+    close.setAttribute("style", "margin-left:auto;background:transparent;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;line-height:1;padding:.25rem .6rem;border-radius:8px;");
+    close.addEventListener("mouseenter", () => close.style.color = "#f1f5f9");
+    close.addEventListener("mouseleave", () => close.style.color = "#94a3b8");
+    const msg = document.createElement("pre");
+    msg.id = "velo-dev-overlay-msg";
+    msg.setAttribute("style", "margin:1rem 1.25rem;white-space:pre-wrap;word-break:break-word;font:0.83rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fbbf24;");
+    const foot = document.createElement("div");
+    foot.setAttribute("style", "padding:.6rem 1.25rem;border-top:1px solid #1f2937;color:#64748b;font-size:.78rem;");
+    foot.textContent = "Velo dev overlay \u00b7 full diagnostic (file.rs:line:col) is in the trunk server terminal \u00b7 save the fix and this page reloads automatically.";
+    head.append(icon, title, close);
+    card.append(head, msg, foot);
+    root.appendChild(card);
+    document.body.appendChild(root);
+    const dismiss = () => { root.remove(); panel = null; };
+    close.addEventListener("click", dismiss);
+    root.addEventListener("click", (ev) => { if (ev.target === root) dismiss(); });
+    return root;
+  };
+  let reloading = false;
+  const tryReload = () => { if (reloading) return; reloading = true; window.location.reload(); setTimeout(() => reloading = false, 1000); };
+  let ws;
+  try { ws = new WebSocket(wsUrl()); } catch (_e) { return; }
+  ws.onopen = () => { ws.onclose = () => tryReload(); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch (_e) { return; }
+    if (m.type === "reload") tryReload();
+    else if (m.type === "buildFailure") {
+      console.error("Velo dev overlay: build failed\n" + m.data.reason);
+      if (!panel) panel = buildPanel();
+      document.getElementById("velo-dev-overlay-msg").textContent = m.data.reason || "Unknown build failure";
+    }
+  };
+})();"##;
+
+/// Inject Velo's built-in dev error overlay (idempotent, no-op outside
+/// `trunk serve`). Called automatically by [`mount`]/[`mount_at`].
+pub fn install_dev_overlay() {
+    if DEV_OVERLAY_INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = js_sys::eval(DEV_OVERLAY_JS);
 }
 
 /// Mounts the root framework application element directly to a target DOM
