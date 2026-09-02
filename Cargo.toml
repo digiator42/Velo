@@ -12,6 +12,7 @@ members = [
     "examples/memo-unwrap-check",
     "examples/arrow-closures",
     "examples/dynamic",
+    "examples/typed-nav",
     "examples/new-features",
 ]
 resolver = "2"

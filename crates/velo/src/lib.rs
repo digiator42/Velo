@@ -14,7 +14,7 @@
 
 /// The `view!`, `#[component]`, `routes!`, and `#[route]` procedural macros
 /// (defined in the companion `velo_macro` package).
-pub use velo_macro::{app, component, error, layout, loading, not_found, page, route, routes, view};
+pub use velo_macro::{app, component, error, layout, loading, not_found, page, route, routes, route_path, view};
 
 // =============================================================================
 // =============================================================================
@@ -2536,13 +2536,13 @@ pub mod prelude {
     // Re-export router structures
     pub use crate::{
         app_layouts, boundary_fault, collected_routes, default_error_fallback, error_boundary,
-        FRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, register_app_layouts,
-        Route, RouteRegistration, Router, RouterProps,
+        FRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, navigate_to,
+        register_app_layouts, Route, RouteRegistration, Router, RouterProps,
     };
 
     // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]
     // procedural macros
-    pub use crate::{app, component, error, layout, loading, not_found, page, route, routes, view};
+    pub use crate::{app, component, error, layout, loading, not_found, page, route, routes, route_path, view};
 
     // Re-export the shorthand convenience macros. `signal!` shares its name with
     // the `signal` value already re-exported above, so the macro rides along on

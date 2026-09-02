@@ -566,6 +566,35 @@ impl ToTokens for VNode {
                                 // `LinkProps.to` is a `String`, so accept both a
                                 // literal/const `&str` and the typed `paths::*`
                                 // builders (String) via one `.into()`.
+                                // 5.P9: when `to` is a string literal and the crate
+                                // has an `src/app/` layout, validate it at compile
+                                // time (`typedRoutes` parity) so `to="/typo"` fails
+                                // to build instead of silently 404-ing.
+                                if let Expr::Lit(expr_lit) = v {
+                                    if let syn::Lit::Str(s) = &expr_lit.lit {
+                                        if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
+                                            let base_dir =
+                                                Path::new(&manifest).join("src").join("app");
+                                            if base_dir.is_dir() {
+                                                if let Err(msg) =
+                                                    validate_route_literal(&s.value(), &base_dir)
+                                                {
+                                                    let msg_lit = syn::LitStr::new(
+                                                        &format!("invalid `to` route: {msg}"),
+                                                        s.span(),
+                                                    );
+                                                    // Emit a single, on-target compile error and
+                                                    // still yield a valid `String` so the rest of
+                                                    // the element doesn't cascade.
+                                                    to_val = quote! {
+                                                        { compile_error!(#msg_lit); #v.into() }
+                                                    };
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 to_val = quote! { #v.into() };
                             } else if attr.key == "label" {
                                 label_val = v_optional;
@@ -1263,6 +1292,110 @@ fn route_data(rel: &str) -> RouteData {
     data
 }
 
+/// A single path segment in a route pattern (5.P9 typed navigation).
+#[derive(Clone, PartialEq)]
+enum RouteSeg {
+    /// Literal segment, e.g. `blog`.
+    Lit(String),
+    /// Dynamic param slot (`:x` / `[x]`) — matches any one segment.
+    Param,
+    /// Catch-all (`**` / `[...x]`) — matches the remaining path.
+    CatchAll,
+}
+
+/// Turns a route `path` string (from [`route_data`]) into a segment list that
+/// [`route_path!`] and `<Link to>` validation can match a concrete URL against.
+fn route_pattern(path: &str) -> Vec<RouteSeg> {
+    path.split('/')
+        .filter(|s| !s.is_empty())
+        .map(|seg| {
+            if seg == "**" {
+                RouteSeg::CatchAll
+            } else if seg.starts_with(':') {
+                RouteSeg::Param
+            } else {
+                RouteSeg::Lit(seg.to_string())
+            }
+        })
+        .collect()
+}
+
+/// Does concrete URL `input` match this route pattern? A `Param` consumes
+/// exactly one input segment; a trailing `CatchAll` consumes the rest; a `Lit`
+/// must equal its input segment. Leftover pattern (non-catch-all) or input
+/// segments fail the match, so genuinely-missing routes are rejected while
+/// params stay loose.
+fn pattern_matches(pat: &[RouteSeg], input: &[&str]) -> bool {
+    let mut i = 0; // input index
+    for (pos, seg) in pat.iter().enumerate() {
+        match seg {
+            RouteSeg::CatchAll => {
+                // Must consume at least one segment and be last.
+                return pos + 1 == pat.len() && i < input.len();
+            }
+            RouteSeg::Param => {
+                if i >= input.len() {
+                    return false;
+                }
+                i += 1;
+            }
+            RouteSeg::Lit(lit) => {
+                if i >= input.len() || input[i] != lit {
+                    return false;
+                }
+                i += 1;
+            }
+        }
+    }
+    i == input.len()
+}
+
+/// Compile-time route registry: scans `src/app/` and returns the pattern for
+/// every *declared* page route. A declared `[...rest]` catch-all is included so
+/// it validates explicitly; the implicit not-found fallback is deliberately
+/// excluded here — it would otherwise accept every path and defeat the
+/// `typedRoutes`-style check.
+fn discover_route_patterns(base: &Path) -> Vec<(String, Vec<RouteSeg>)> {
+    let mut out: Vec<(String, Vec<RouteSeg>)> = Vec::new();
+    if !base.is_dir() {
+        return out;
+    }
+    let files = collect_app_files(base);
+    for f in files.iter().filter(|f| f.kind == AppFileKind::Page) {
+        let data = route_data(&f.rel);
+        out.push((data.path.clone(), route_pattern(&data.path)));
+    }
+    out
+}
+
+/// Validates a concrete URL literal against the discovered routes, returning a
+/// human-friendly error message (listing available routes) on failure.
+fn validate_route_literal(input: &str, base: &Path) -> core::result::Result<(), String> {
+    let patterns = discover_route_patterns(base);
+    let input_segs: Vec<&str> = input.split('/').filter(|s| !s.is_empty()).collect();
+    let root_matches = input == "/" || (input_segs.is_empty() && input.is_empty());
+    for (path, pat) in &patterns {
+        if root_matches && path == "/" {
+            return Ok(());
+        }
+        if pattern_matches(pat, &input_segs) {
+            return Ok(());
+        }
+    }
+    let mut listing = patterns
+        .iter()
+        .map(|(p, _)| format!("      - {p}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if listing.is_empty() {
+        listing = "      (no `page.rs` files found under src/app/)".to_string();
+    }
+    Err(format!(
+        "no route in `src/app/` matches \"{input}\"\navailable routes:\n{listing}"
+    ))
+}
+
+
 /// Layout chain (nearest segment layout -> ... -> root layout) for a page rel.
 fn layout_chain(rel: &str, files: &[AppFile]) -> Vec<String> {
     let dir = match rel.rsplit_once('/') {
@@ -1533,4 +1666,45 @@ fn find_segment_file(rel: &str, files: &[AppFile], fname: &str) -> Option<String
         return Some(candidate);
     }
     None
+}
+
+/// `route_path!("/some/route")` — a compile-time validated path literal
+/// (`typedRoutes` parity, 5.P9).
+///
+/// Scans the crate's `src/app/` layout and fails to compile if the literal
+/// doesn't match a known page route (catches `to=` typos before they reach
+/// `<Link>` / `navigate_to`). Dynamic params match any one segment; `**`
+/// matches the rest, so `route_path!("/blog/anything")` is valid alongside
+/// `/blog/[slug]`. Expands to the literal `&'static str`, so it drops straight
+/// into `<Link to={ route_path!("/posts") } />` or `navigate_to(route_path!(..))`.
+///
+/// ```ignore
+/// <Link to={ route_path!("/about") } label="About" />   // ok
+/// navigate_to(route_path!("/typo-route"));              // compile error: no such route
+/// ```
+#[proc_macro]
+pub fn route_path(input: TokenStream) -> TokenStream {
+    let str_lit = parse_macro_input!(input as syn::LitStr);
+    let value = str_lit.value();
+
+    let base_dir = match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(m) => Path::new(&m).join("src").join("app"),
+        Err(_) => {
+            return syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "route_path!: CARGO_MANIFEST_DIR is unavailable",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+
+    if let Err(msg) = validate_route_literal(&value, &base_dir) {
+        return syn::Error::new(str_lit.span(), format!("route_path! failed: {msg}"))
+            .to_compile_error()
+            .into();
+    }
+
+    let lit = syn::LitStr::new(&value, proc_macro2::Span::call_site());
+    quote::quote! { #lit }.into()
 }
