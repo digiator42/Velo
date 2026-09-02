@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Velo Dev Error Overlay</title>
+    <style>
+        body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; max-width: 420px; }
+        button { background: #38bdf8; color: #0f172a; font-weight: bold; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0284c7; color: white; }
+        code { background: #334155; padding: 2px 6px; border-radius: 4px; color: #a5f3fc; }
+    </style>
+    <!-- Velo dev-only error overlay: hide this tag in prod, or keep it — it is
+         inert whenever the app is not served by `trunk serve`. -->
+    <script src="velo-error-overlay.js"></script>
+    <link data-trunk rel="copy-file" href="velo-error-overlay.js"/>
+    <link rel="data-trunk" href="Cargo.toml" data-type="rust"/>
+</head>
+<body>
+    <div class="card">
+        <h1>"Velo dev overlay"</h1>
+        <p>Start <code>trunk serve --watch</code>, then introduce a syntax/type error in <code>src/lib.rs</code> — the failure lands here as a styled panel instead of a dead tab.</p>
+    </div>
+</body>
+</html>

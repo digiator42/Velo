@@ -78,6 +78,8 @@ trunk serve --open
 
 Trunk will compile your Rust code to WebAssembly, start a local web server (usually at `http://127.0.0.1:8080`), open your default browser, and watch for file changes to provide hot reloading!
 
+Add `--watch` if you want it to rebuild and reload the browser on every save. See [Dev Server, Error Overlay & HMR](dev-server-and-hmr.md) for the full dev loop, including Velo's on-page compile-error overlay.
+
 ---
 
 ## 4. How It Works

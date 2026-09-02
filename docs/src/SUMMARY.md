@@ -6,6 +6,7 @@
 - [Installation & Toolchain](getting-started/installation.md)
 - [Quickstart Guide](getting-started/quickstart.md)
 - [Project Structure](getting-started/project-structure.md)
+- [Dev Server, Error Overlay & HMR](getting-started/dev-server-and-hmr.md)
 
 # Reactivity Engine
 - [Reactivity Overview & Mental Model](reactivity/overview.md)
