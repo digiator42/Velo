@@ -28,11 +28,11 @@ use velo::prelude::*;
 pub fn run_app() {
     // Seed global context
     provide_context(ThemeContext {
-        is_dark: signal(false),
+        is_dark: signal!(false),
         accent_color: "hsl(210, 100%, 50%)".into(),
     });
 
-    mount_to_id("app", app_shell());
+    mount(app_shell());
 }
 ```
 

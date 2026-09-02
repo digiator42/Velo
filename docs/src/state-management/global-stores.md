@@ -61,7 +61,7 @@ impl AppState {
 ```rust
 pub fn run_app() {
     provide_context(AppState::new());
-    mount_to_id("app", root_view());
+    mount(root_view());
 }
 ```
 

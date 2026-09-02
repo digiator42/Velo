@@ -19,7 +19,7 @@ let frag = DomNode::fragment();
 let text = DomNode::text("Static string");
 
 // Create reactive text node
-let (name, _) = create_signal("Ada".to_string());
+let name = signal!("Ada".to_string());
 let reactive_name = name.clone();
 let text_node = DomNode::reactive_text(move || reactive_name.get());
 ```
@@ -52,17 +52,17 @@ btn.on("click", move |_event| {
 });
 
 // Reactive attribute binding
-let (theme, _) = create_signal("dark".to_string());
+let theme = signal!("dark".to_string());
 let t = theme.clone();
 btn.reactive_attribute("class", move || t.get());
 
 // Reactive class toggle
-let (is_active, _) = create_signal(true);
+let is_active = signal!(true);
 let a = is_active.clone();
 btn.toggle_class("active", move || a.get());
 
 // Reactive CSS style
-let (color, _) = create_signal("red".to_string());
+let color = signal!("red".to_string());
 let c = color.clone();
 btn.reactive_style("color", move || c.get());
 ```

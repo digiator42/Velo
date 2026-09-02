@@ -9,8 +9,8 @@ When updating multiple signals in succession, notifications can trigger multiple
 ```rust
 use velo::prelude::*;
 
-let (first_name, set_first) = create_signal("Ada".to_string());
-let (last_name, set_last) = create_signal("Lovelace".to_string());
+let first_name = signal!("Ada".to_string());
+let last_name = signal!("Lovelace".to_string());
 
 let full_name = memo({
     let first = first_name.clone();
@@ -21,8 +21,8 @@ let full_name = memo({
 // Without batch(): `full_name` recomputes twice (once after set_first, once after set_last)
 // With batch(): `full_name` recomputes ONCE after both sets complete
 batch(|| {
-    set_first.set("Grace".to_string());
-    set_last.set("Hopper".to_string());
+    first_name.set("Grace".to_string());
+    last_name.set("Hopper".to_string());
 });
 ```
 
@@ -33,11 +33,12 @@ batch(|| {
 `batch()` handles nesting safely. Only the outermost `batch()` flushes pending notifications:
 
 ```rust
+// `a`, `b`, `c` are RwSignals from `signal!`
 batch(|| {
-    set_a.set(1);
+    a.set(1);
     batch(|| {
-        set_b.set(2);
+        b.set(2);
     });
-    set_c.set(3);
+    c.set(3);
 }); // Single synchronized notification cycle runs here
 ```

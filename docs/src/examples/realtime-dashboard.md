@@ -30,12 +30,16 @@ pub fn MetricCard(title: String, value: RwSignal<i32>, unit: String) {
 
 ```rust
 use velo::prelude::*;
+use gloo_timers::callback::Interval;
 
-#[component]
-pub fn DashboardPage() {
-    let cpu_load = signal(35);
-    let memory_usage = signal(60);
-    let active_connections = signal(1200);
+use super::components::MetricCard;   // or inline below
+
+/// `/` home page — lives at src/app/page.rs
+#[page]
+pub fn page() -> DomNode {
+    let cpu_load = signal!(35);
+    let memory_usage = signal!(60);
+    let active_connections = signal!(1200);
 
     let cpu = cpu_load.clone();
     let mem = memory_usage.clone();
@@ -43,7 +47,7 @@ pub fn DashboardPage() {
 
     // Stream 20 updates per second
     let mut ticker = 0;
-    gloo_timers::callback::Interval::new(50, move || {
+    Interval::new(50, move || {
         ticker += 1;
         cpu.set(30 + (ticker % 40));
         mem.set(50 + (ticker % 30));
@@ -64,5 +68,21 @@ pub fn DashboardPage() {
             <div class="spinner-tester"></div>
         </div>
     }
+}
+```
+
+The app root wires the page in with `app!` + `<Router>`:
+
+```rust
+use velo::prelude::*;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+velo::app!();
+
+#[wasm_bindgen(start)]
+pub fn main() { run_app(); }
+
+pub fn run_app() {
+    mount(view! { <div id="app"><Router routes={ velo_app::routes() } /></div> });
 }
 ```

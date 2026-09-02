@@ -15,7 +15,7 @@ To keep a child component reactive to parent state, pass a `ReadSignal<T>`, `RwS
 use velo::prelude::*;
 
 #[component]
-fn MetricDisplay(title: String, value: ReadSignal<i32>) {
+fn MetricDisplay(title: String, value: RwSignal<i32>) {
     view! {
         <div class="metric-card">
             <h4>{ title }</h4>
@@ -25,10 +25,10 @@ fn MetricDisplay(title: String, value: ReadSignal<i32>) {
 }
 
 // In the parent view:
-let (score, set_score) = create_signal(100);
+let score = signal!(100);
 
 view! {
-    <MetricDisplay title="Player Score".into() value={ score.clone() } />
+    <MetricDisplay title="Player Score".into() value={ score } />
 }
 ```
 

@@ -11,7 +11,7 @@ Use `create_memo` or the terse factory `memo`:
 ```rust
 use velo::prelude::*;
 
-let (count, set_count) = create_signal(2);
+let count = signal!(2);
 
 // Derived state: recalculates only when `count` updates
 let doubled = memo({
@@ -21,7 +21,7 @@ let doubled = memo({
 
 assert_eq!(doubled.get(), 4);
 
-set_count.set(5);
+count.set(5);
 assert_eq!(doubled.get(), 10);
 ```
 
@@ -32,8 +32,8 @@ assert_eq!(doubled.get(), 10);
 Memos can read any number of signals or other memos. They automatically subscribe to all signals read during their execution:
 
 ```rust
-let (first_name, set_first) = create_signal("Ada".to_string());
-let (last_name, set_last) = create_signal("Lovelace".to_string());
+let first_name = signal!("Ada".to_string());
+let last_name = signal!("Lovelace".to_string());
 
 let full_name = memo({
     let first = first_name.clone();

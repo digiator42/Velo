@@ -11,7 +11,7 @@ Use `create_effect(closure)`:
 ```rust
 use velo::prelude::*;
 
-let (theme, set_theme) = create_signal("dark".to_string());
+let theme = signal!("dark".to_string());
 
 let theme_reader = theme.clone();
 let handle = create_effect(move || {
@@ -31,7 +31,7 @@ let handle = create_effect(move || {
 When setting up browser timers, web socket subscriptions, or external event listeners inside an effect, use `create_effect_with_cleanup`:
 
 ```rust
-let (is_active, set_active) = create_signal(true);
+let is_active = signal!(true);
 
 let is_act = is_active.clone();
 let handle = create_effect_with_cleanup(
