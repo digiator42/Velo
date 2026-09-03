@@ -16,6 +16,7 @@ members = [
     "examples/typed-nav",
     "examples/new-features",
     "examples/prefetch-fetch",
+    "examples/velocity",
 ]
 resolver = "2"
 

@@ -1,0 +1,17 @@
+[package]
+name = "velocity"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+velo = { path = "../../crates/velo" }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true }
+js-sys = { workspace = true }
+console_error_panic_hook = "0.1"
+serde = { workspace = true, features = ["derive"] }
+uuid = { version = "1", features = ["v4", "js"] }

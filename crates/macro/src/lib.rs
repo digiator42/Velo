@@ -830,7 +830,9 @@ impl ToTokens for VNode {
                                     parent_node.reactive_attribute("checked", move || {
                                         use wasm_bindgen::JsCast;
                                         let checked = velo::signal_value!(bind_sig_1);
-                                        let s = if checked { "checked" } else { "" };
+                                        // `reactive_attribute` requires `FnMut() -> String`,
+                                        // so materialise an owned String (not `&str`).
+                                        let s: String = if checked { "checked".into() } else { "".into() };
                                         // Also set live DOM property for correct behavior
                                         if let Ok(el) = bind_node.raw_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
                                             let _ = el.set_checked(checked);
@@ -1053,6 +1055,13 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
         Default::default(),
         Box::new(syn::parse_quote!(velo::DomNode)),
     );
+
+    // Components are conventionally PascalCase (e.g. `UserCard`), so suppress
+    // the `non_snake_case` lint on the function name. Without this every
+    // `#[component] fn Foo(...)` in user apps would warn.
+    func.attrs.push(syn::parse_quote! {
+        #[allow(non_snake_case)]
+    });
 
     TokenStream::from(quote! {
         #props_struct

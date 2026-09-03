@@ -811,6 +811,34 @@ pub fn signal_vec<T: Clone + 'static>(initial: Vec<T>) -> SignalVec<T> {
 // setup reads as a short, memorable verb instead of a `create_*`/`*_context`
 // function name.
 
+/// `memo!(closure)` — shorthand for [`memo`], creating a derived, cached
+/// read-only signal whose closure re-runs whenever any signal it reads changes.
+///
+/// ```ignore
+/// let doubled = memo!(move || count.get() * 2);
+/// // auto-unwraps in `view! { { doubled } }` (no `.get()` needed in the view).
+/// ```
+#[macro_export]
+macro_rules! memo {
+    ($f:expr) => {
+        $crate::memo($f)
+    };
+}
+
+/// `signal_vec!(items)` — shorthand for [`signal_vec`], creating a reactive
+/// `SignalVec<T>` that the `view!` keyed `for` loop reconciles by key.
+///
+/// ```ignore
+/// let users = signal_vec![User { id: 1, name: "Ada".into() }];
+/// users.push(User { id: 2, name: "Bob".into() });
+/// ```
+#[macro_export]
+macro_rules! signal_vec {
+    ($($value:expr),* $(,)?) => {
+        $crate::signal_vec(vec![ $($value),* ])
+    };
+}
+
 /// `signal!(value)` — shorthand for [`signal`], creating a combined
 /// read+write `RwSignal<T>`.
 ///
