@@ -53,6 +53,7 @@ pub fn main() {
 }
 
 pub fn run_app() {
+    web_sys::console::log_1(&"[velocity] run_app starting...".into());
     // Seed global context (auth + theme) before mounting so every route and
     // descendant component can read it via `context!()` / `use_context`.
     let users = MockApi::users();
@@ -74,4 +75,5 @@ pub fn run_app() {
         <Router routes={ velo_app::routes() } />
     };
     mount(shell);
+    web_sys::console::log_1(&"[velocity] mount() done".into());
 }

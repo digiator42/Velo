@@ -11,16 +11,25 @@ use crate::components::*;
 pub fn page() -> DomNode {
     // ---- Async resources (mock latency so Suspense loading states show) ----
     let projects = create_resource(|| async {
+        web_sys::console::log_1(&"[velocity] projects: waiting 400ms...".into());
         velo::sleep(400).await;
-        MockApi::projects()
+        let p = MockApi::projects();
+        web_sys::console::log_1(&format!("[velocity] projects: resolved, {} projects", p.len()).into());
+        p
     });
     let stats = create_resource(|| async {
+        web_sys::console::log_1(&"[velocity] stats: waiting 500ms...".into());
         velo::sleep(500).await;
-        MockApi::dashboard_stats()
+        let s = MockApi::dashboard_stats();
+        web_sys::console::log_1(&"[velocity] stats: resolved".into());
+        s
     });
     let activities = create_resource(|| async {
+        web_sys::console::log_1(&"[velocity] activities: waiting 600ms...".into());
         velo::sleep(600).await;
-        MockApi::activities()
+        let a = MockApi::activities();
+        web_sys::console::log_1(&format!("[velocity] activities: resolved, {} items", a.len()).into());
+        a
     });
 
     // `loading()` is consumed inside `<Suspense>`'s reactive predicate closure,

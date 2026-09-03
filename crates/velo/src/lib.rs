@@ -668,7 +668,14 @@ where
     F: FnMut() -> T + 'static,
     T: Clone + 'static,
 {
-    let init = f();
+    // Suppress the parent effect's subscription during the initial evaluation
+    // so that signal reads inside `f()` don't leak into the calling effect.
+    let init = ACTIVE_EFFECT_ID.with(|e| {
+        let prev = e.borrow_mut().take();
+        let val = f();
+        *e.borrow_mut() = prev;
+        val
+    });
     let (read, write) = create_signal(init);
     let handle = create_effect({
         let write = write.clone();
@@ -2114,6 +2121,9 @@ fn url_decode(s: &str) -> String {
 
 /// Programmatically updates the browser URL and alerts the active Route Signal
 pub fn navigate_to(path: &str) {
+    web_sys::console::log_1(&format!("[Router] navigate_to({})", path).into());
+    let backtrace = js_sys::Error::new("navigate_to backtrace");
+    web_sys::console::log_1(&js_sys::Reflect::get(&backtrace, &"stack".into()).unwrap_or_default());
     let window = web_sys::window().expect("Velo Router: No window found");
     let history = window
         .history()
@@ -2139,6 +2149,7 @@ pub fn init_router_listeners() {
 
     let on_popstate = Closure::wrap(Box::new(move |_e: web_sys::PopStateEvent| {
         let current_path_str = web_sys::window().unwrap().location().pathname().unwrap();
+        web_sys::console::log_1(&format!("[Router] popstate fired, path={}", current_path_str).into());
         let query = parse_query_string(&web_sys::window().unwrap().location().search().unwrap_or_default());
 
         CURRENT_PATH.with(|path_signal| {
@@ -2498,8 +2509,11 @@ pub fn Router(props: RouterProps) -> DomNode {
     let chain_c = Rc::clone(&active_chain);
     let outlet_c = outlet.clone();
 
+    let render_count = std::cell::Cell::new(0u32);
     std::mem::forget(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
+        render_count.set(render_count.get() + 1);
+        web_sys::console::log_1(&format!("[Router] render #{} path={}", render_count.get(), current_path).into());
 
         // 1. Match the route, staging parsed params BEFORE the leaf renders so
         //    `FRouter::param` / `use_param` read fresh values.
