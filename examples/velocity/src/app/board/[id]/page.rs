@@ -1,17 +1,16 @@
 use velo::prelude::*;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::api::{Column, MockApi, Priority, Status, Task};
 use crate::components::*;
 
 /// The Kanban board at `/board/:id`. Loads the project, its columns, and its
-/// tasks via `create_resource` + `<Suspense>`, then hands reactive
-/// `SignalVec`s to `<KanbanBoard>` (keyed `for` reconciliation).
+/// tasks via `create_resource` + `<Suspense>`, then derives reactive columns
+/// and per-column task lists from a single grouped `memo!`.
 ///
-/// Exercises `signal!` + `memo!`, `signal_vec` + keyed `for`, `effect!`,
-/// `class:` toggles, `class_names!`, `<Link prefetch>`, `route_path!` (via
-/// `paths::`), async `() => {}` arrow handlers, and `use_context` (theme).
+/// Exercises `signal!` + `memo!`, `effect!`, `class:` toggles, `bind:value`,
+/// `<Link prefetch>`, `route_path!` (via `paths::`), async arrow handlers, and
+/// `use_context` (theme).
 #[page]
 pub fn page() -> DomNode {
     let project_id = FRouter::use_param::<String>("id").unwrap_or_default();
@@ -48,109 +47,80 @@ pub fn page() -> DomNode {
     let show_done = signal!(true);
     let modal_open = signal!(false);
 
-    // ---- Reactive column list (`memo!`) filtered by search ----
-    let columns_mv = memo!({
-        let cols = cols_raw.clone();
-        let s = search.clone();
-        move || {
-            let q = s.get().to_lowercase();
-            cols.value()
-                .clone()
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|c| c.title.to_lowercase().contains(&q))
-                .collect::<Vec<Column>>()
-        }
-    });
-    let columns_sv = velo::signal_vec(columns_mv.get());
-    let sync_cols = columns_sv.clone();
-    let sync_cols_src = columns_mv.clone();
+    // ---- Tasks held in a writable signal so creation re-renders the board ----
+    let tasks = signal!(Vec::new());
+    let tasks_set = tasks;
+    let tasks_raw_for_effect = tasks_raw.clone();
     effect!(move || {
-        sync_cols.with_mut(|v| *v = sync_cols_src.get());
-    });
-
-    // ---- Per-column task lists (`memo!` filtered by search + status) ----
-    let tasks_filtered_mv = memo!({
-        let tasks = tasks_raw.clone();
-        let (st, si, sd) = (show_todo, show_inprogress, show_done);
-        let s = search.clone();
-        move || {
-            let q = s.get().to_lowercase();
-            tasks.value().clone().unwrap_or_default().into_iter()
-                .filter(|t| {
-                    let matches_search = t.title.to_lowercase().contains(&q);
-                    let matches_status = match t.status {
-                        Status::Todo => st.get(),
-                        Status::InProgress => si.get(),
-                        Status::Done => sd.get(),
-                    };
-                    matches_search && matches_status
-                })
-                .collect::<Vec<Task>>()
+        if let Some(v) = tasks_raw_for_effect.value() {
+            tasks_set.set(v);
         }
     });
 
-    // One SignalVec per column, synced with the filtered task memo via an effect.
-    let tasks_by_col: Rc<std::cell::RefCell<HashMap<String, velo::SignalVec<Task>>>> =
-        Rc::new(std::cell::RefCell::new(HashMap::new()));
-    // Seed column buckets from the initial filtered snapshot.
-    {
-        let cols = columns_mv.get();
-        let tasks_snapshot = tasks_filtered_mv.get();
-        let mut map = tasks_by_col.borrow_mut();
-        for c in &cols {
-            let in_col: Vec<Task> = tasks_snapshot
-                .iter()
-                .filter(|t| t.column_id == c.id)
-                .cloned()
-                .collect();
-            map.insert(c.id.clone(), velo::signal_vec(in_col));
-        }
-    }
-    let tasks_for_col = {
-        let map = Rc::clone(&tasks_by_col);
-        Rc::new(move |col_id: &str| -> velo::SignalVec<Task> {
-            map.borrow().get(col_id).cloned().unwrap_or_else(|| velo::signal_vec(Vec::new()))
-        }) as Rc<dyn Fn(&str) -> velo::SignalVec<Task>>
-    };
+    // ---- Single grouped memo: (columns filtered by search) × (their tasks,
+    //      filtered by search + status). Recomputes on any input signal change.
+    let cols_for_grouped = cols_raw.clone();
+    let tasks_for_grouped = tasks;
+    let grouped = memo!(move || {
+        let q = search.get().to_lowercase();
+        let cols = cols_for_grouped.value().clone().unwrap_or_default();
+        let all_tasks = tasks_for_grouped.get();
+        let result = cols.into_iter()
+            .filter(|c| c.title.to_lowercase().contains(&q))
+            .map(|c| {
+                let mine = all_tasks
+                    .iter()
+                    .filter(|t| {
+                        t.column_id == c.id
+                            && t.title.to_lowercase().contains(&q)
+                            && match t.status {
+                                Status::Todo => show_todo.get(),
+                                Status::InProgress => show_inprogress.get(),
+                                Status::Done => show_done.get(),
+                            }
+                    })
+                    .cloned()
+                    .collect::<Vec<Task>>();
+                (c, mine)
+            })
+            .collect::<Vec<(Column, Vec<Task>)>>();
+        result
+    });
 
-    // Sync each column's SignalVec with the filtered memo on changes.
-    let sync_tasks = tasks_by_col.clone();
-    let sync_tasks_src = tasks_filtered_mv.clone();
+    // Outer keyed `for` reconciles columns; driven by a SignalVec of columns.
+    // Starts empty and is populated reactively by `sync_cols` below — we must
+    // NOT seed it from `grouped.get()` here, because that eager read would run
+    // inside the Router's render effect and leak a subscription into it,
+    // causing the Router to re-render (and rebuild the whole page) whenever the
+    // memo changes — an infinite loop.
+    let columns = velo::signal_vec(Vec::new());
+    let sync_cols = columns.clone();
+    let grouped_c = grouped.clone();
     effect!(move || {
-        let snapshot = sync_tasks_src.get();
-        let map = sync_tasks.borrow();
-        for (id, sv) in map.iter() {
-            let in_col: Vec<Task> = snapshot.iter().filter(|t| t.column_id == *id).cloned().collect();
-            sv.with_mut(|v| *v = in_col);
-        }
+        sync_cols.with_mut(|v| *v = columns_from(&grouped_c.get()));
     });
 
-    // Create-task handler: append to the mock store AND the column's SignalVec.
+    // ---- Create-task handlers: push to the live task signal. ----
     let on_add: Rc<dyn Fn(String)> = {
         let project_id = project_id.clone();
         let cols = cols_raw.clone();
-        let tbc_lookup = tasks_for_col.clone();
-        Rc::new(move |title: String| {
-            let col_id = cols
-                .value()
+        let tasks = tasks.clone();
+        let first_col = move || {
+            cols.value()
                 .as_ref()
                 .and_then(|cs| cs.first().map(|c| c.id.clone()))
-                .unwrap_or_default();
+                .unwrap_or_default()
+        };
+        Rc::new(move |title: String| {
+            let col_id = first_col();
             let t = MockApi::create_task(&project_id, &col_id, &title, Priority::Medium);
-            tbc_lookup(&col_id).push(t);
+            tasks.update(|v| v.push(t));
         })
     };
 
-    // Create-task handler for the modal: the modal builds the `Task` itself
-    // (via MockApi::create_task, which persists it), so we just push the
-    // returned task into its column's SignalVec. Keeping it separate from
-    // `on_add` (title-only, for the quick-add form) matches the two shapes.
     let on_create_task: Rc<dyn Fn(Task)> = {
-        let tbc_lookup = tasks_for_col.clone();
-        Rc::new(move |t: Task| {
-            tbc_lookup(&t.column_id).push(t);
-        })
+        let tasks = tasks.clone();
+        Rc::new(move |t: Task| tasks.update(|v| v.push(t)))
     };
 
     let on_task_open = {
@@ -181,11 +151,11 @@ pub fn page() -> DomNode {
                 }
             } }
 
-            <Suspense loading={ cols_raw.loading() || tasks_raw.loading() }
+            <Suspense loading={ move || cols_raw.loading() || tasks_raw.loading() }
                       fallback={ view! { <div class="loading">"Loading board…"</div> } }>
                 <KanbanBoard
-                    columns={ columns_sv }
-                    tasks_for_column={ tasks_for_col.clone() }
+                    columns={ columns }
+                    grouped={ grouped.clone() }
                     on_task_open={ on_task_open } />
             </Suspense>
 
@@ -208,4 +178,9 @@ pub fn page() -> DomNode {
             </div>
         </div>
     }
+}
+
+/// Extract just the columns from the grouped memo (for the outer keyed `for`).
+fn columns_from(groups: &[(Column, Vec<Task>)]) -> Vec<Column> {
+    groups.iter().map(|(c, _)| c.clone()).collect()
 }

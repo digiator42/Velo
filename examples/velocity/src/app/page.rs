@@ -11,25 +11,16 @@ use crate::components::*;
 pub fn page() -> DomNode {
     // ---- Async resources (mock latency so Suspense loading states show) ----
     let projects = create_resource(|| async {
-        web_sys::console::log_1(&"[velocity] projects: waiting 400ms...".into());
         velo::sleep(400).await;
-        let p = MockApi::projects();
-        web_sys::console::log_1(&format!("[velocity] projects: resolved, {} projects", p.len()).into());
-        p
+        MockApi::projects()
     });
     let stats = create_resource(|| async {
-        web_sys::console::log_1(&"[velocity] stats: waiting 500ms...".into());
         velo::sleep(500).await;
-        let s = MockApi::dashboard_stats();
-        web_sys::console::log_1(&"[velocity] stats: resolved".into());
-        s
+        MockApi::dashboard_stats()
     });
     let activities = create_resource(|| async {
-        web_sys::console::log_1(&"[velocity] activities: waiting 600ms...".into());
         velo::sleep(600).await;
-        let a = MockApi::activities();
-        web_sys::console::log_1(&format!("[velocity] activities: resolved, {} items", a.len()).into());
-        a
+        MockApi::activities()
     });
 
     // `loading()` is consumed inside `<Suspense>`'s reactive predicate closure,
@@ -42,27 +33,32 @@ pub fn page() -> DomNode {
     let stats_value_overview = stats.clone();
     let stats_value_chart = stats.clone();
 
-    // ---- Live search: signal! + memo! (filtered count recomputes on type) ----
+    // ---- Live search: signal! + memo! (filtered count + results recomputes on type) ----
     let search = signal!(String::new());
     let proj_for_filter = projects.clone();
-    let filtered_count = memo!(move || {
+    let filtered_tasks = memo!(move || {
         let p = proj_for_filter.value();
         if let Some(projects) = p {
             let q = search.get().to_lowercase();
-            let mut count = 0usize;
+            if q.is_empty() {
+                return Vec::new();
+            }
+            let mut results = Vec::new();
             for proj in &projects {
                 let tasks = MockApi::tasks(&proj.id);
                 for t in &tasks {
                     if t.title.to_lowercase().contains(&q) {
-                        count += 1;
+                        results.push((proj.name.clone(), t.clone()));
                     }
                 }
             }
-            count
+            results
         } else {
-            0
+            Vec::new()
         }
     });
+    let filtered_count_tasks = filtered_tasks.clone();
+    let filtered_count = memo!(move || filtered_count_tasks.get().len());
 
     view! {
         <div class="dashboard">
@@ -70,7 +66,7 @@ pub fn page() -> DomNode {
             <h1>"Dashboard"</h1>
             <p class="subtitle">"Overview of all your projects and recent activity."</p>
 
-            <Suspense loading={ projects_loading.loading() }
+            <Suspense loading={ move || projects_loading.loading() }
                       fallback={ view! { <div class="loading">"Loading projects…"</div> } }>
                 <ProjectsSection projects={ projects.clone() } />
             </Suspense>
@@ -80,7 +76,25 @@ pub fn page() -> DomNode {
                 <span class="hint">"Matching tasks: " { filtered_count }</span>
             </div>
 
-            <Suspense loading={ stats_loading_overview.loading() }
+            { move || {
+                let tasks = filtered_tasks.get();
+                if tasks.is_empty() {
+                    return view! { <div></div> };
+                }
+                let items = tasks.into_iter().enumerate().map(|(i, (proj_name, task))| {
+                    let title = task.title.clone();
+                    let proj = proj_name.clone();
+                    view! {
+                        <div class="activity-item" key={ i.to_string() }>
+                            <span class="target">{ proj }</span>
+                            " — " { title }
+                        </div>
+                    }
+                }).collect::<Vec<_>>();
+                view! { <div class="search-results activity-feed">{ items }</div> }
+            } }
+
+            <Suspense loading={ move || stats_loading_overview.loading() }
                       fallback={ view! { <div class="loading">"Loading stats…"</div> } }>
                 { move || match stats_value_overview.value() {
                     Some(s) => view! {
@@ -96,7 +110,7 @@ pub fn page() -> DomNode {
                 } }
             </Suspense>
 
-            <Suspense loading={ stats_loading_chart.loading() }
+            <Suspense loading={ move || stats_loading_chart.loading() }
                       fallback={ view! { <div class="loading">"Loading chart…"</div> } }>
                 { move || match stats_value_chart.value() {
                     Some(s) => {
@@ -113,7 +127,7 @@ pub fn page() -> DomNode {
                 } }
             </Suspense>
 
-            <Suspense loading={ activities_loading.loading() }
+            <Suspense loading={ move || activities_loading.loading() }
                       fallback={ view! { <div class="loading">"Loading activity…"</div> } }>
                 <ActivitySection activities={ activities.clone() } />
             </Suspense>

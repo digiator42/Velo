@@ -37,7 +37,7 @@ pub fn CreateTaskModal(open: bool,
 
     view! {
         <div class="overlay-backdrop" on:click={ move |_| on_close_backdrop() }>
-            <div class="task-detail" on:click={ move |_| {} }>
+            <div class="task-detail" on:click={ move |e: web_sys::Event| e.stop_propagation() }>
                 <h2>"New Task"</h2>
                 <div class="form-group">
                     <label>"Title"</label>

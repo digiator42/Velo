@@ -17,8 +17,10 @@ pub fn KeyboardShortcuts() -> DomNode {
         move || {
             use wasm_bindgen::JsCast;
             let window = web_sys::window().expect("window");
-            let handler = Closure::wrap(Box::new(move |_e: web_sys::KeyboardEvent| {
-                is_dark.set(!is_dark.get());
+            let handler = Closure::wrap(Box::new(move |e: web_sys::KeyboardEvent| {
+                if e.key() == "t" {
+                    is_dark.set(!is_dark.get());
+                }
             }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
             window.add_event_listener_with_callback("keydown", handler.as_ref().unchecked_ref())
                 .expect("bind keydown");

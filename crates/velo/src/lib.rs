@@ -476,7 +476,12 @@ pub struct EffectHandle {
 
 impl Drop for EffectHandle {
     fn drop(&mut self) {
-        dispose_effect(&self.effect);
+        // Only dispose the effect when this is the last surviving clone.
+        // Prior clones may still be captured by closures or retained via
+        // `std::mem::forget`; disposing early would kill their reactivity.
+        if Rc::strong_count(&self.effect) == 1 {
+            dispose_effect(&self.effect);
+        }
     }
 }
 
@@ -898,6 +903,12 @@ macro_rules! context {
 /// `effect!(closure, cleanup)` — shorthand for [`create_effect_with_cleanup`],
 /// running `cleanup` exactly once when the effect is disposed.
 ///
+/// Both forms are **retained** (the effect stays alive for the app lifetime),
+/// so a bare `effect!(...)` statement remains reactive and keeps re-running on
+/// signal changes instead of being silently disposed as soon as the statement
+/// finishes. For lifecycle-controlled disposal, call [`create_effect`] /
+/// [`create_effect_with_cleanup`] directly and drop the returned [`EffectHandle`].
+///
 /// ```ignore
 /// effect!(move || log(count.get()));
 /// effect!(
@@ -907,12 +918,14 @@ macro_rules! context {
 /// ```
 #[macro_export]
 macro_rules! effect {
-    ($f:expr) => {
-        $crate::create_effect($f)
-    };
-    ($f:expr, $cleanup:expr) => {
-        $crate::create_effect_with_cleanup($f, $cleanup)
-    };
+    ($f:expr) => {{
+        let __velo_effect_handle = $crate::create_effect($f);
+        std::mem::forget(__velo_effect_handle);
+    }};
+    ($f:expr, $cleanup:expr) => {{
+        let __velo_effect_handle = $crate::create_effect_with_cleanup($f, $cleanup);
+        std::mem::forget(__velo_effect_handle);
+    }};
 }
 
 /// A reactive handle for async data.
@@ -2121,9 +2134,6 @@ fn url_decode(s: &str) -> String {
 
 /// Programmatically updates the browser URL and alerts the active Route Signal
 pub fn navigate_to(path: &str) {
-    web_sys::console::log_1(&format!("[Router] navigate_to({})", path).into());
-    let backtrace = js_sys::Error::new("navigate_to backtrace");
-    web_sys::console::log_1(&js_sys::Reflect::get(&backtrace, &"stack".into()).unwrap_or_default());
     let window = web_sys::window().expect("Velo Router: No window found");
     let history = window
         .history()
@@ -2149,7 +2159,6 @@ pub fn init_router_listeners() {
 
     let on_popstate = Closure::wrap(Box::new(move |_e: web_sys::PopStateEvent| {
         let current_path_str = web_sys::window().unwrap().location().pathname().unwrap();
-        web_sys::console::log_1(&format!("[Router] popstate fired, path={}", current_path_str).into());
         let query = parse_query_string(&web_sys::window().unwrap().location().search().unwrap_or_default());
 
         CURRENT_PATH.with(|path_signal| {
@@ -2513,7 +2522,6 @@ pub fn Router(props: RouterProps) -> DomNode {
     std::mem::forget(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
         render_count.set(render_count.get() + 1);
-        web_sys::console::log_1(&format!("[Router] render #{} path={}", render_count.get(), current_path).into());
 
         // 1. Match the route, staging parsed params BEFORE the leaf renders so
         //    `FRouter::param` / `use_param` read fresh values.
@@ -2832,4 +2840,96 @@ pub mod prelude {
 
     // Re-export the built-in control-flow component `Show`.
     pub use crate::Show;
+}
+
+// ---------------------------------------------------------------------------
+// Host-side reactivity tests — reproduce the resource `value` subscription bug.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod reactivity_tests {
+    use super::*;
+
+    #[test]
+    fn memo_reacts_to_signal_none_to_some() {
+        // Simulate a Resource's `value` signal: starts `None`, later becomes `Some`.
+        let value = signal!(Option::<i32>::None);
+        let value_for_memo = value;
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log_c = log.clone();
+        let m = memo!(move || {
+            let v = value_for_memo.get().unwrap_or_default();
+            log_c.borrow_mut().push(v);
+            v
+        });
+        // Initial: memo evaluated twice (init + first effect run) with 0.
+        assert_eq!(m.get(), 0);
+        // Change the source signal to Some(42). Memo should recompute to 42.
+        value.set(Some(42));
+        assert_eq!(m.get(), 42, "memo did not recompute after source became Some");
+        let log = log.borrow();
+        assert_eq!(*log.last().unwrap(), 42, "memo closure last run should be 42; log={:?}", *log);
+    }
+
+    #[test]
+    fn memo_inside_enclosing_effect_reacts_to_source() {
+        // Reproduce the board page: memo! created inside the Router's render
+        // effect (an enclosing create_effect). Verify the memo still subscribes
+        // to an external resource-like signal and recomputes when it changes.
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let value = signal!(Option::<i32>::None);
+        let log = Rc::new(RefCell::new(Vec::new()));
+
+        // Enclosing effect (simulates the Router render effect).
+        let m_holder: Rc<RefCell<Option<Memo<i32>>>> = Rc::new(RefCell::new(None));
+        let m_holder2 = m_holder.clone();
+        let value2 = value;
+        let log2 = log.clone();
+        create_effect(move || {
+            // Read a signal in the enclosing effect (like the router path).
+            let _ = value2.get();
+            if m_holder2.borrow().is_none() {
+                let m = {
+                    let value3 = value2;
+                    let log3 = log2.clone();
+                    memo!(move || {
+                        let v = value3.get().unwrap_or_default();
+                        log3.borrow_mut().push(v);
+                        v
+                    })
+                };
+                *m_holder2.borrow_mut() = Some(m);
+            }
+        });
+
+        // Value starts None: memo holds 0.
+        let captured = m_holder.borrow().clone().unwrap();
+        assert_eq!(captured.get(), 0);
+
+        // Change source to Some(42) → memo inside the enclosing effect must recompute.
+        value.set(Some(42));
+        let captured = m_holder.borrow().clone().unwrap();
+        assert_eq!(captured.get(), 42, "memo created inside an effect did not react to source");
+        assert!(
+            log.borrow().contains(&42),
+            "memo closure never ran with 42; log={:?}",
+            *log.borrow()
+        );
+    }
+
+    #[test]
+    fn effect_reacts_to_signal_none_to_some() {
+        let value = signal!(Option::<i32>::None);
+        let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen_c = seen.clone();
+        let h = create_effect(move || {
+            if let Some(v) = value.get() {
+                seen_c.borrow_mut().push(v);
+            }
+        });
+        let _ = h;
+        value.set(Some(7));
+        assert_eq!(*seen.borrow(), vec![7], "effect did not re-run after source became Some");
+    }
 }

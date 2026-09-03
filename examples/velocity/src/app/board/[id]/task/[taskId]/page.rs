@@ -30,14 +30,22 @@ pub fn page() -> DomNode {
         let tid = task_id.clone();
         move || tasks.value().as_ref().and_then(|ts| ts.iter().find(|t| t.id == tid).cloned())
     });
+    let loading_check = tasks.clone();
+    let loading_inside = tasks.clone();
 
     view! {
         <div class="task-detail-page">
             <Head title="Task · Velocity" />
-            <Suspense loading={ tasks.loading() }
+            <Suspense loading={ move || loading_check.loading() }
                       fallback={ view! { <div class="loading">"Loading task…"</div> } }>
                 { move || {
                     let close_pid = project_id.clone();
+                    // While the task list is still loading, `found` is `None` —
+                    // don't raise a fault yet; Suspense's `loading` predicate is
+                    // responsible for showing the fallback until data arrives.
+                    if loading_inside.loading() {
+                        return DomNode::empty();
+                    }
                     match found.get() {
                         Some(t) => view! {
                             <TaskDetail
