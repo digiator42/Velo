@@ -17,6 +17,17 @@
 pub use velo_macro::{app, component, error, layout, loading, not_found, page, route, routes, route_path, view};
 
 // =============================================================================
+// DX toolkit modules — timers, SSE, stream/scroll helpers
+// =============================================================================
+
+pub mod io;
+pub mod sse;
+mod timers;
+
+pub use io::{scroll_to_bottom, stream_lines, LineSplitter};
+pub use timers::{debounced, interval, timeout, IntervalHandle, TimeoutHandle};
+
+// =============================================================================
 // =============================================================================
 // PART 1 — REACTIVITY ENGINE  (formerly `velo_core`)
 // =============================================================================
@@ -25,19 +36,27 @@ pub use velo_macro::{app, component, error, layout, loading, not_found, page, ro
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EffectId(usize);
 
 thread_local! {
-    static ACTIVE_EFFECT_ID: RefCell<Option<EffectId>> = RefCell::new(None);
-    static EFFECT_REGISTRY: RefCell<Vec<Rc<RefCell<Effect>>>> = RefCell::new(Vec::new());
+    /// The effect currently executing (initial run or a flush), if any.
+    /// Holding the `Rc` directly makes `SignalInner::get` O(1): no linear
+    /// scan of the registry per signal read (hot path at 100+ events/sec).
+    static ACTIVE_EFFECT: RefCell<Option<Rc<RefCell<Effect>>>> = RefCell::new(None);
+    /// Diagnostic registry of every effect ever created. Entries are
+    /// `Weak`, so they never keep an effect alive; dead entries are pruned
+    /// lazily by [`live_effect_count`] / registration.
+    static EFFECT_REGISTRY: RefCell<Vec<Weak<RefCell<Effect>>>> = RefCell::new(Vec::new());
     static EFFECT_COUNTER: RefCell<usize> = RefCell::new(0);
 
     // --- batching ---
     /// Queue of effects ready to run; drained by `flush_effects`.
-    static PENDING_EFFECTS: RefCell<Vec<Rc<RefCell<Effect>>>> = RefCell::new(Vec::new());
+    /// `Weak` so a handle dropped while queued still lets the effect die
+    /// (and skips its cleanup-less free) instead of being kept alive here.
+    static PENDING_EFFECTS: RefCell<Vec<Weak<RefCell<Effect>>>> = RefCell::new(Vec::new());
     /// Depth of nested `batch()` calls. 0 = no batch active.
     static BATCH_DEPTH: RefCell<usize> = RefCell::new(0);
 
@@ -62,18 +81,28 @@ pub struct Effect {
     cleanup: Option<Box<dyn FnOnce()>>,
 }
 
-impl Effect {
-    fn new(id: EffectId, func: Box<dyn FnMut()>) -> Self {
-        Self { id, func, disposed: false, cleanup: None }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Registration / disposal / flushing
 // ---------------------------------------------------------------------------
 
 fn register_effect(effect: &Rc<RefCell<Effect>>) {
-    EFFECT_REGISTRY.with(|r| r.borrow_mut().push(Rc::clone(effect)));
+    EFFECT_REGISTRY.with(|r| {
+        let mut r = r.borrow_mut();
+        // Opportunistically prune entries whose effect already died.
+        r.retain(|w| w.strong_count() > 0);
+        r.push(Rc::downgrade(effect));
+    });
+}
+
+/// Number of effects that are currently alive (not yet garbage-collected).
+/// Diagnostic helper for leak tests: create effects, tear down their owners,
+/// and assert the count returns to its baseline.
+pub fn live_effect_count() -> usize {
+    EFFECT_REGISTRY.with(|r| {
+        let mut r = r.borrow_mut();
+        r.retain(|w| w.strong_count() > 0);
+        r.len()
+    })
 }
 
 /// Mark an effect as disposed and run its cleanup (if any). Safe to call
@@ -107,26 +136,27 @@ pub(crate) fn flush_effects() {
             break;
         }
         // Dedup by EffectId so an effect queued by multiple signals in one batch
-        // runs only once.
+        // runs only once. Dead weak entries (owner dropped) are skipped.
         let mut seen: HashSet<EffectId> = HashSet::new();
         let mut deduped: Vec<Rc<RefCell<Effect>>> = Vec::new();
-        for effect_rc in to_run {
-            let id = effect_rc.borrow().id;
-            if !seen.contains(&id) && !effect_rc.borrow().disposed {
-                seen.insert(id);
+        for weak in to_run {
+            let Some(effect_rc) = weak.upgrade() else {
+                continue;
+            };
+            let (id, disposed) = {
+                let ef = effect_rc.borrow();
+                (ef.id, ef.disposed)
+            };
+            if !disposed && seen.insert(id) {
                 deduped.push(effect_rc);
             }
         }
         for effect_rc in deduped {
-            // Re-register so a second .set() during this run will queue again.
-            register_effect(&effect_rc);
-            let effect_id = effect_rc.borrow().id;
-
-            let previous_id = ACTIVE_EFFECT_ID.with(|active| active.replace(Some(effect_id)));
+            let previous = ACTIVE_EFFECT.with(|active| active.replace(Some(Rc::clone(&effect_rc))));
             let mut func = std::mem::replace(&mut effect_rc.borrow_mut().func, Box::new(|| {}));
             (func)();
             effect_rc.borrow_mut().func = func;
-            ACTIVE_EFFECT_ID.with(|active| active.replace(previous_id));
+            ACTIVE_EFFECT.with(|active| active.replace(previous));
         }
     }
 }
@@ -139,15 +169,14 @@ pub(crate) fn flush_effects() {
 /// value plus the list of effects currently subscribed to it.
 pub(crate) struct SignalEngine<T> {
     value: RefCell<T>,
-    subscribers: RefCell<Vec<Rc<RefCell<Effect>>>>,
+    subscribers: RefCell<Vec<Weak<RefCell<Effect>>>>,
 }
 
 /// A `Copy` shared handle to a [`SignalEngine`].
 ///
 /// `Copy` and `Drop` are mutually exclusive in Rust, so the engine can never be
 /// reference-counted back down to nothing. It is therefore deliberately
-/// retained for the lifetime of the app — exactly like the effects that
-/// `reactive_text` / `reactive_switch` `mem::forget`. That is the price of
+/// retained for the lifetime of the app. That is the price of
 /// zero-`.clone()` ergonomics: `move ||` and `async move { .. }` handlers
 /// capture the handle by value over and over, and `Copy` lets them share it
 /// without cloning.
@@ -186,17 +215,11 @@ impl<T> Copy for SignalInner<T> {}
 impl<T: Clone + 'static> SignalInner<T> {
     /// Read the value and, if an effect is running, subscribe it.
     fn get(&self) -> T {
-        ACTIVE_EFFECT_ID.with(|active_id| {
-            if let Some(current_id) = *active_id.borrow() {
-                EFFECT_REGISTRY.with(|registry| {
-                    if let Some(effect_rc) = registry
-                        .borrow()
-                        .iter()
-                        .find(|e| e.borrow().id == current_id && !e.borrow().disposed)
-                    {
-                        self.mount_effect(&effect_rc);
-                    }
-                });
+        ACTIVE_EFFECT.with(|active| {
+            if let Some(effect_rc) = active.borrow().as_ref() {
+                if !effect_rc.borrow().disposed {
+                    self.mount_effect(effect_rc);
+                }
             }
         });
         self.engine().value.borrow().clone()
@@ -221,27 +244,47 @@ impl<T: Clone + 'static> SignalInner<T> {
     /// accumulated in `PENDING_EFFECTS` and only flushed when the outermost
     /// `batch()` exits. Otherwise they are flushed immediately.
     fn notify(&self) {
-        let subs = self.engine().subscribers.borrow().clone();
-        let mut added: HashSet<EffectId> = HashSet::new();
+        // Upgrade weak subscribers (pruning dead/disposed entries) into the
+        // pending queue.
         let mut to_queue: Vec<Rc<RefCell<Effect>>> = Vec::new();
-
-        for effect_rc in subs {
-            let effect_id = effect_rc.borrow().id;
-            if !effect_rc.borrow().disposed && added.insert(effect_id) {
-                to_queue.push(effect_rc);
+        {
+            let mut subs = self.engine().subscribers.borrow_mut();
+            let mut seen: HashSet<EffectId> = HashSet::new();
+            let mut live: Vec<Weak<RefCell<Effect>>> = Vec::with_capacity(subs.len());
+            for weak in subs.iter() {
+                if let Some(effect_rc) = weak.upgrade() {
+                    let (id, disposed) = {
+                        let ef = effect_rc.borrow();
+                        (ef.id, ef.disposed)
+                    };
+                    if !disposed {
+                        if seen.insert(id) {
+                            to_queue.push(Rc::clone(&effect_rc));
+                        }
+                        live.push(Weak::clone(weak));
+                    }
+                }
             }
+            *subs = live;
         }
 
         // Avoid pushing effects that are already in the queue (e.g. when
         // multiple signals in a batch notify the same effect).
         let existing_ids: HashSet<EffectId> = PENDING_EFFECTS.with(|q| {
-            q.borrow().iter().map(|e| e.borrow().id).collect()
+            q.borrow()
+                .iter()
+                .filter_map(|w| w.upgrade())
+                .map(|rc| rc.borrow().id)
+                .collect()
         });
-        for effect_rc in to_queue {
-            if !existing_ids.contains(&effect_rc.borrow().id) {
-                PENDING_EFFECTS.with(|q| q.borrow_mut().push(effect_rc));
+        PENDING_EFFECTS.with(|q| {
+            let mut q = q.borrow_mut();
+            for effect_rc in to_queue {
+                if !existing_ids.contains(&effect_rc.borrow().id) {
+                    q.push(Rc::downgrade(&effect_rc));
+                }
             }
-        }
+        });
 
         // If we are not inside a batch, flush immediately so the change is
         // visible synchronously (preserving the current behaviour for code
@@ -252,10 +295,32 @@ impl<T: Clone + 'static> SignalInner<T> {
     }
 
     fn mount_effect(&self, effect: &Rc<RefCell<Effect>>) {
+        let id = effect.borrow().id;
         let mut subs = self.engine().subscribers.borrow_mut();
-        if !subs.iter().any(|s| s.borrow().id == effect.borrow().id) {
-            subs.push(Rc::clone(effect));
+        let mut present = false;
+        let mut live: Vec<Weak<RefCell<Effect>>> = Vec::with_capacity(subs.len() + 1);
+        for weak in subs.iter() {
+            if let Some(rc) = weak.upgrade() {
+                let (rid, disposed) = {
+                    let ef = rc.borrow();
+                    (ef.id, ef.disposed)
+                };
+                if disposed {
+                    continue;
+                }
+                if rid == id {
+                    if present {
+                        continue;
+                    }
+                    present = true;
+                }
+                live.push(Weak::clone(weak));
+            }
         }
+        if !present {
+            live.push(Rc::downgrade(effect));
+        }
+        *subs = live;
     }
 }
 
@@ -440,18 +505,30 @@ fn create_effect_inner(
     let effect_rc = Rc::new(RefCell::new(effect));
     let effect_rc_clone = Rc::clone(&effect_rc);
 
-    // Register globally
+    // Register globally (weak; diagnostics only).
     register_effect(&effect_rc);
 
     // Initial synchronous execution
-    let previous_id = ACTIVE_EFFECT_ID.with(|active| active.replace(Some(id)));
+    let previous = ACTIVE_EFFECT.with(|active| active.replace(Some(Rc::clone(&effect_rc))));
     let mut func = std::mem::replace(&mut effect_rc.borrow_mut().func, Box::new(|| {}));
     (func)();
     effect_rc.borrow_mut().func = func;
-    ACTIVE_EFFECT_ID.with(|active| active.replace(previous_id));
+    ACTIVE_EFFECT.with(|active| active.replace(previous));
 
     // Flush any effects that were queued during the initial run.
     flush_effects();
+
+    // Adopt into the innermost open effect scope (if any) so the effect is
+    // disposed when that scope's owner is torn down — see `open_scope`.
+    // The returned handle still works normally: whichever handle drops LAST
+    // disposes the effect.
+    SCOPE_STACK.with(|stack| {
+        if let Some(top) = stack.borrow().last() {
+            top.borrow_mut().push(EffectHandle {
+                effect: Rc::clone(&effect_rc),
+            });
+        }
+    });
 
     EffectHandle { effect: effect_rc_clone }
 }
@@ -477,12 +554,98 @@ pub struct EffectHandle {
 impl Drop for EffectHandle {
     fn drop(&mut self) {
         // Only dispose the effect when this is the last surviving clone.
-        // Prior clones may still be captured by closures or retained via
-        // `std::mem::forget`; disposing early would kill their reactivity.
+        // Prior clones may still be captured by closures, held by an effect
+        // scope, or retained via `std::mem::forget`; disposing early would
+        // kill their reactivity.
         if Rc::strong_count(&self.effect) == 1 {
             dispose_effect(&self.effect);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Effect scopes — automatic disposal tied to an owner (node / scope guard)
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Stack of open effect scopes. `create_effect` adopts its handle into the
+    /// innermost scope, so dropping that scope's owner disposes every effect
+    /// created inside it. Empty outside components / keyed-list rows.
+    static SCOPE_STACK: RefCell<Vec<Rc<RefCell<Vec<EffectHandle>>>>> = RefCell::new(Vec::new());
+}
+
+/// Open a new effect scope. Effects created while a scope is open are adopted
+/// into it; the returned guard owns them. Dropping the guard disposes every
+/// effect that hasn't been adopted elsewhere (last-owner semantics).
+///
+/// The `view!` macro / `#[component]` use this internally and attach the
+/// collected handles to the produced [`DomNode`], so you rarely need it
+/// directly — but it is public for scoping arbitrary effects:
+///
+/// ```ignore
+/// let _guard = velo::scope(|| {
+///     effect!(move || log(count.get())); // disposed when _guard drops
+/// });
+/// ```
+pub fn scope<R>(f: impl FnOnce() -> R) -> (R, ScopeGuard) {
+    open_scope();
+    let value = f();
+    let handles = close_scope();
+    (value, ScopeGuard { handles })
+}
+
+/// Guard returned by [`scope`]: dropping it disposes the effects created
+/// inside the scope (unless their handles were moved elsewhere first).
+pub struct ScopeGuard {
+    handles: Rc<RefCell<Vec<EffectHandle>>>,
+}
+
+impl Drop for ScopeGuard {
+    fn drop(&mut self) {
+        self.handles.borrow_mut().clear();
+    }
+}
+
+/// Push a new effect-scope frame. Internal building block for [`scope`],
+/// `#[component]`, and the keyed-list reconciler.
+#[doc(hidden)]
+pub fn open_scope() -> Rc<RefCell<Vec<EffectHandle>>> {
+    let frame = Rc::new(RefCell::new(Vec::new()));
+    SCOPE_STACK.with(|stack| stack.borrow_mut().push(Rc::clone(&frame)));
+    frame
+}
+
+/// Pop the innermost effect-scope frame and return its collected handles.
+#[doc(hidden)]
+pub fn close_scope() -> Rc<RefCell<Vec<EffectHandle>>> {
+    SCOPE_STACK.with(|stack| {
+        stack
+            .borrow_mut()
+            .pop()
+            .expect("Velo: close_scope without a matching open_scope")
+    })
+}
+
+/// True while at least one effect scope is open. The `effect!` macro uses
+/// this to decide between scope adoption (open) and app-lifetime retention
+/// (`mem::forget`, closed).
+#[doc(hidden)]
+pub fn effect_scope_active() -> bool {
+    SCOPE_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
+/// Run `f` inside a fresh effect scope and attach every effect created during
+/// it to the `DomNode` it returns — so dropping that node disposes them all.
+/// This is the body wrapper `#[component]` generates; also used by the router
+/// to scope page/layout builds per navigation. Early `return`s inside `f`
+/// return from `f` itself, so the scope always closes.
+pub fn scoped_node(f: impl FnOnce() -> DomNode) -> DomNode {
+    open_scope();
+    let node = f();
+    let handles = close_scope();
+    let collected: Vec<EffectHandle> = handles.borrow_mut().drain(..).collect();
+    node.retain_effects(collected);
+    node
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +750,29 @@ impl<T: Clone + 'static> SignalVec<T> {
         self.inner.update(|v| v.clear());
     }
 
+    /// Push `item`, then evict from the **front** while the length exceeds
+    /// `cap` — a rolling window (e.g. keeping only the last 200 log lines).
+    /// One notification regardless of how many items were evicted.
+    pub fn push_capped(&self, item: T, cap: usize) {
+        self.inner.update(|v| {
+            v.push(item);
+            let excess = v.len().saturating_sub(cap);
+            if excess > 0 {
+                v.drain(..excess);
+            }
+        });
+    }
+
+    /// Insert `item` at the **front**, then evict from the back while the
+    /// length exceeds `cap` — a newest-first bounded log where old entries
+    /// fall off the end. One notification regardless of evictions.
+    pub fn insert_front_capped(&self, item: T, cap: usize) {
+        self.inner.update(|v| {
+            v.insert(0, item);
+            v.truncate(cap);
+        });
+    }
+
     /// Apply a batch of mutations in one notification (prevents N re-renders).
     pub fn with_mut<F: FnOnce(&mut Vec<T>)>(&self, f: F) {
         self.inner.update(f);
@@ -675,7 +861,7 @@ where
 {
     // Suppress the parent effect's subscription during the initial evaluation
     // so that signal reads inside `f()` don't leak into the calling effect.
-    let init = ACTIVE_EFFECT_ID.with(|e| {
+    let init = ACTIVE_EFFECT.with(|e| {
         let prev = e.borrow_mut().take();
         let val = f();
         *e.borrow_mut() = prev;
@@ -903,11 +1089,16 @@ macro_rules! context {
 /// `effect!(closure, cleanup)` — shorthand for [`create_effect_with_cleanup`],
 /// running `cleanup` exactly once when the effect is disposed.
 ///
-/// Both forms are **retained** (the effect stays alive for the app lifetime),
-/// so a bare `effect!(...)` statement remains reactive and keeps re-running on
-/// signal changes instead of being silently disposed as soon as the statement
-/// finishes. For lifecycle-controlled disposal, call [`create_effect`] /
-/// [`create_effect_with_cleanup`] directly and drop the returned [`EffectHandle`].
+/// Outside any scope (app-level code), both forms are **retained** (the effect
+/// stays alive for the app lifetime), so a bare `effect!(...)` statement
+/// remains reactive instead of being silently disposed as soon as the
+/// statement finishes.
+///
+/// Inside a component / keyed-list row / [`scope`] the effect is adopted by
+/// the enclosing scope instead of being retained, so it is disposed
+/// automatically when that owner is torn down. For manual lifecycle control,
+/// call [`create_effect`] / [`create_effect_with_cleanup`] directly and drop
+/// the returned [`EffectHandle`].
 ///
 /// ```ignore
 /// effect!(move || log(count.get()));
@@ -920,11 +1111,15 @@ macro_rules! context {
 macro_rules! effect {
     ($f:expr) => {{
         let __velo_effect_handle = $crate::create_effect($f);
-        std::mem::forget(__velo_effect_handle);
+        if !$crate::effect_scope_active() {
+            std::mem::forget(__velo_effect_handle);
+        }
     }};
     ($f:expr, $cleanup:expr) => {{
         let __velo_effect_handle = $crate::create_effect_with_cleanup($f, $cleanup);
-        std::mem::forget(__velo_effect_handle);
+        if !$crate::effect_scope_active() {
+            std::mem::forget(__velo_effect_handle);
+        }
     }};
 }
 
@@ -1392,26 +1587,83 @@ macro_rules! class_names {
 #[derive(Clone)]
 pub struct DomNode {
     pub raw_node: Node,
+    /// Ownership record that keeps this node's event listeners, reactive
+    /// effects, and absorbed child resources alive exactly as long as the
+    /// node itself — and tears them down when the last clone drops.
+    /// See `docs/src/dom-and-lifecycle/effect-cleanup.md`.
+    res: Rc<RefCell<NodeRes>>,
+}
+
+/// Per-node ownership record (private to `DomNode`).
+///
+/// - `children` absorbs the resources of child nodes appended to this node,
+///   so a subtree stays reactive after the caller's `DomNode` handles are
+///   dropped (append unpacks temporaries).
+/// - `effects` retains handles created for this node (attribute bindings,
+///   reconcilers, component scopes) instead of `mem::forget`ing them.
+/// - `listeners` pairs each registered event closure with its event name so
+///   `remove_event_listener` runs on drop.
+pub(crate) struct NodeRes {
+    node: Node,
+    children: Vec<Rc<RefCell<NodeRes>>>,
+    effects: Vec<EffectHandle>,
+    listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
+}
+
+impl NodeRes {
+    fn new(node: Node) -> Self {
+        Self {
+            node,
+            children: Vec::new(),
+            effects: Vec::new(),
+            listeners: Vec::new(),
+        }
+    }
+
+    /// Track `child_res` as an owned child resource (idempotent).
+    fn absorb(&mut self, child_res: &Rc<RefCell<NodeRes>>) {
+        if !self.children.iter().any(|c| Rc::ptr_eq(c, child_res)) {
+            self.children.push(Rc::clone(child_res));
+        }
+    }
+
+    /// Stop tracking `child_res` (call after the child leaves this node).
+    fn release(&mut self, child_res: &Rc<RefCell<NodeRes>>) {
+        self.children.retain(|c| !Rc::ptr_eq(c, child_res));
+    }
+}
+
+impl Drop for NodeRes {
+    fn drop(&mut self) {
+        // Detach event listeners before handles/closures drop. The other
+        // fields (`effects`, `children`) drop right after this impl runs,
+        // disposing effects and releasing sub-resources bottom-up.
+        for (name, closure) in self.listeners.drain(..) {
+            let _ = self
+                .node
+                .remove_event_listener_with_callback(&name, closure.as_ref().unchecked_ref());
+        }
+    }
 }
 
 impl DomNode {
+    fn make(raw_node: Node) -> Self {
+        let res = Rc::new(RefCell::new(NodeRes::new(raw_node.clone())));
+        Self { raw_node, res }
+    }
     /// Creates a standard HTML element container (e.g., "div", "button", "h1")
     pub fn element(tag: &str) -> Self {
         let el = document()
             .create_element(tag)
             .expect("Velo: Failed to create DOM element tag");
-        Self {
-            raw_node: el.into(),
-        }
+        Self::make(el.into())
     }
 
     /// Creates an empty DocumentFragment node to act as a zero-wrapper container for siblings.
     /// When appended to a parent, the browser automatically unpacks its children directly.
     pub fn fragment() -> Self {
         let frag = document().create_document_fragment();
-        Self {
-            raw_node: frag.into(),
-        }
+        Self::make(frag.into())
     }
 
     /// Renders nothing. An alias for [`DomNode::fragment`] with zero
@@ -1442,17 +1694,13 @@ impl DomNode {
         let el: Element = document().create_element("div").unwrap();
         el.set_attribute("style", "display: contents")
             .expect("Velo: Failed to set transparent container style");
-        Self {
-            raw_node: el.into(),
-        }
+        Self::make(el.into())
     }
 
     /// Creates a static, un-changing text node
     pub fn text(content: &str) -> Self {
         let txt = document().create_text_node(content);
-        Self {
-            raw_node: txt.into(),
-        }
+        Self::make(txt.into())
     }
 
     /// Sets the text content of this node directly, replacing any existing children.
@@ -1469,24 +1717,63 @@ impl DomNode {
         let txt_node = document().create_text_node("");
         let current_node = txt_node.clone();
 
-        // Establish the tracking wrapper loop. The effect is retained for the
-        // node's lifetime (leaked): dropping an `EffectHandle` disposes the
-        // effect, which would kill reactivity on the first update.
-        std::mem::forget(create_effect(move || {
+        // The effect is retained by the node itself: it stays alive exactly
+        // as long as the node does, and is disposed when the node drops.
+        let handle = create_effect(move || {
             let evaluated_string = f();
             current_node.set_node_value(Some(&evaluated_string));
-        }));
+        });
 
-        Self {
-            raw_node: txt_node.into(),
+        let node = Self::make(txt_node.into());
+        node.retain_effect(handle);
+        node
+    }
+
+    /// Retain an [`EffectHandle`] for this node's lifetime: the effect is
+    /// disposed when the node (and every clone sharing its resources) drops.
+    /// This is the non-leaking alternative to `mem::forget(create_effect(..))`.
+    pub fn retain_effect(&self, handle: EffectHandle) {
+        self.res.borrow_mut().effects.push(handle);
+    }
+
+    /// Retain several effect handles at once. Used by `#[component]` to attach
+    /// its effect scope to the returned node.
+    #[doc(hidden)]
+    pub fn retain_effects(&self, handles: Vec<EffectHandle>) {
+        self.res.borrow_mut().effects.extend(handles);
+    }
+
+    /// Set an attribute directly (no effect). Used by the `view!` macro for
+    /// literal attributes.
+    pub fn set_attr(&self, name: &str, value: &str) {
+        if let Ok(el) = self.raw_node.clone().dyn_into::<Element>() {
+            let _ = el.set_attribute(name, value);
         }
     }
 
-    /// Appends a child DomNode into this node's layout structure
+    /// Remove an attribute directly (no effect). Used by the `view!` macro
+    /// for literal `disabled`/`checked`-style flags.
+    pub fn remove_attr(&self, name: &str) {
+        if let Ok(el) = self.raw_node.clone().dyn_into::<Element>() {
+            let _ = el.remove_attribute(name);
+        }
+    }
+
+    /// Appends a child DomNode into this node's layout structure and absorbs
+    /// the child's resource record, so the subtree's effects/listeners stay
+    /// alive after the caller's handle is dropped.
     pub fn append(&self, child: &DomNode) {
         self.raw_node
             .append_child(&child.raw_node)
             .expect("Velo: Failed to append child node layout hook");
+        self.res.borrow_mut().absorb(&child.res);
+    }
+
+    /// Stop absorbing `child`'s resources. Call after removing the child from
+    /// this node (the reconciler and dynamic-expression swap do this) so the
+    /// child's effects are disposed instead of lingering.
+    pub fn release(&self, child: &DomNode) {
+        self.res.borrow_mut().release(&child.res);
     }
 
     /// Binds an attribute (like "class" or "id") directly to a reactive Signal
@@ -1502,14 +1789,17 @@ impl DomNode {
             .expect("Velo: Can only bind attributes to element nodes");
         let attr_name = name.to_string();
 
-        std::mem::forget(create_effect(move || {
+        let handle = create_effect(move || {
             let value = f();
             el.set_attribute(&attr_name, &value)
                 .expect("Velo: Failed to update element node attribute");
-        }));
+        });
+        self.retain_effect(handle);
     }
 
-    /// Attaches an event listener directly to the browser element wrapper
+    /// Attaches an event listener directly to the browser element wrapper.
+    /// The closure is owned by the node: it is removed via
+    /// `remove_event_listener` when the node drops.
     pub fn on<F>(&self, event_name: &str, mut handler: F)
     where
         F: FnMut(web_sys::Event) + 'static,
@@ -1522,8 +1812,10 @@ impl DomNode {
             .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref())
             .expect("Velo: Failed to attach event listener callback");
 
-        // Prevent Rust from cleaning up the closure allocation context immediately
-        closure.forget();
+        self.res
+            .borrow_mut()
+            .listeners
+            .push((event_name.to_string(), closure));
     }
 
     /// Explicitly handles components, sub-views, or existing DomNodes passed into braces
@@ -1551,14 +1843,15 @@ impl DomNode {
             .expect("Velo: Can only toggle classes on element nodes");
         let class_name = class_name.to_string();
 
-        std::mem::forget(create_effect(move || {
+        let handle = create_effect(move || {
             let on = is_on();
             if on {
                 let _ = el.class_list().add_1(&class_name);
             } else {
                 let _ = el.class_list().remove_1(&class_name);
             }
-        }));
+        });
+        self.retain_effect(handle);
     }
 
     /// Applies a static base class plus a set of reactively-toggled classes,
@@ -1626,11 +1919,12 @@ impl DomNode {
             let name = name.to_string();
             let toggle_state = Rc::clone(&state);
             let toggle_apply = apply.clone();
-            std::mem::forget(create_effect(move || {
+            let handle = create_effect(move || {
                 let on = is_on();
                 toggle_state.borrow_mut().insert(name.clone(), on);
                 toggle_apply();
-            }));
+            });
+            self.retain_effect(handle);
         }
     }
 
@@ -1653,7 +1947,7 @@ impl DomNode {
             std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
         let styles_c = std::rc::Rc::clone(&styles);
 
-        std::mem::forget(create_effect(move || {
+        let handle = create_effect(move || {
             let value = f();
             styles_c.borrow_mut().insert(property.clone(), value);
 
@@ -1664,13 +1958,19 @@ impl DomNode {
                 .collect::<Vec<_>>()
                 .join("; ");
             let _ = el.set_attribute("style", &css);
-        }));
+        });
+        self.retain_effect(handle);
     }
 
     /// Mounts a keyed, fine-grained reactive list. On each change the reconciler
     /// inserts/removes/moves real DOM nodes to match the new keyed items, instead
     /// of blowing away the whole subtree. `key` extracts the stable key; `render`
     /// builds the `DomNode` for one item.
+    ///
+    /// Moves are minimal: a row is re-inserted only when it is not already
+    /// positioned immediately after its new predecessor (front-eviction and
+    /// appends move zero surviving rows). Each row renders inside its own
+    /// effect scope, so effects created for a row are disposed with the row.
     pub fn render_signal_vec<T, K, FKey, FRender>(
         &self,
         list: &SignalVec<T>,
@@ -1704,14 +2004,20 @@ impl DomNode {
         let list = list.clone();
         let nodes_c = Rc::clone(&nodes);
         let order_c = Rc::clone(&order);
+        // Weak, never strong: the container's resource holds THIS effect's
+        // handle, so a strong capture would form res -> effect -> res cycle.
+        let container_res = Rc::downgrade(&self.res);
 
-        // Retained (leaked) for the container's lifetime — dropping the handle
-        // disposes the effect and freezes the list at its initial render.
-        std::mem::forget(create_effect(move || {
+        // Retained by the container node: dropped (and disposed) with it.
+        let handle = create_effect(move || {
+            let Some(res) = container_res.upgrade() else {
+                return; // container resource already gone; we're being disposed
+            };
             let items: Vec<T> = list.get();
             let new_keys: Vec<K> = items.iter().map(|it| key(it)).collect();
 
-            // Remove nodes whose key disappeared.
+            // Remove nodes whose key disappeared — release the container's
+            // absorption first so the row's effects/listeners are disposed.
             let live: std::collections::HashSet<K> = new_keys.iter().cloned().collect();
             let stale: Vec<K> = order_c
                 .borrow()
@@ -1721,28 +2027,44 @@ impl DomNode {
                 .collect();
             for k in stale {
                 if let Some(node) = nodes_c.borrow_mut().remove(&k) {
-                    let _ = container.remove_child(&node.raw_node);
+                    res.borrow_mut().release(&node.res);
+                    if let Some(parent) = node.raw_node.parent_node() {
+                        let _ = parent.remove_child(&node.raw_node);
+                    }
                 }
             }
 
-            // Build nodes only for keys we don't already have. Re-rendering
-            // every item on each mutation is wasteful: it re-runs (and leaks)
-            // the per-item reactive effects even when nothing changed, which
-            // degrades to quadratic time as the list grows.
+            // Build nodes only for keys we don't already have — inside a
+            // per-row effect scope so row-local effects die with the row.
             let mut by_key: HashMap<K, DomNode> = HashMap::new();
             let existing_keys: std::collections::HashSet<K> =
                 nodes_c.borrow().keys().cloned().collect();
             for it in &items {
                 let k = key(it);
                 if !existing_keys.contains(&k) {
+                    open_scope();
                     let node = render(it);
+                    let handles = close_scope();
+                    let collected: Vec<EffectHandle> = handles.borrow_mut().drain(..).collect();
+                    if !collected.is_empty() {
+                        node.retain_effects(collected);
+                    }
+                    res.borrow_mut().absorb(&node.res);
                     by_key.insert(k, node);
                 }
             }
 
-            // Reconcile against previous order: insert/move each item before the
-            // node that precedes it in the previous layout (or append at end).
-            let prev = order_c.borrow().clone();
+            // Plan minimal moves against the DOM order that remains after
+            // stale removals (see `plan_keyed_moves`): a row moves only when
+            // it isn't already immediately after its new predecessor.
+            let prev_live: Vec<K> = order_c
+                .borrow()
+                .iter()
+                .filter(|k| live.contains(k))
+                .cloned()
+                .collect();
+            let moves = plan_keyed_moves(&prev_live, &new_keys);
+
             for (idx, k) in new_keys.iter().enumerate() {
                 // Avoid holding a RefCell borrow across the match: the scrutinee
                 // `borrow` temporary is dropped before the arm bodies run, so the
@@ -1757,24 +2079,29 @@ impl DomNode {
                     }
                 };
 
-                let reference = if idx + 1 < new_keys.len() {
-                    nodes_c
-                        .borrow()
-                        .get(&new_keys[idx + 1])
-                        .map(|n| n.raw_node.clone())
-                } else {
-                    None
-                };
-
-                // Only re-insert if its position actually changed.
-                let needs_move = prev.get(idx) != Some(k);
-                if needs_move {
+                if moves[idx] {
+                    // Anchor behind the already-final predecessor (rows
+                    // 0..idx-1 are in place by induction), never to a future
+                    // row: `new[idx + 1]` may be a fresh node that isn't in
+                    // the DOM yet (insertBefore would fail) or an existing
+                    // row still sitting at its old position (it would drag
+                    // this row with it when it later moves).
+                    let reference = if idx == 0 {
+                        container.first_child()
+                    } else {
+                        let prev = nodes_c
+                            .borrow()
+                            .get(&new_keys[idx - 1])
+                            .map(|n| n.raw_node.clone());
+                        prev.and_then(|p| p.next_sibling())
+                    };
                     let _ = container.insert_before(&node.raw_node, reference.as_ref());
                 }
             }
 
             *order_c.borrow_mut() = new_keys;
-        }));
+        });
+        self.retain_effect(handle);
     }
 
     /// Accepts a closure from the macro, evaluates it inside an effect loop,
@@ -1791,26 +2118,65 @@ impl DomNode {
         // fragment) while staying attached so swaps are visible.
         let container = DomNode::display_contents();
         let container_raw = container.raw_node.clone();
+        // Weak to avoid a res -> effect -> closure -> res ownership cycle.
+        let container_res = Rc::downgrade(&container.res);
 
         let mut f_clone = move || f();
 
-        // Retained (leaked) for the container's lifetime; see reactive_text.
-        std::mem::forget(create_effect(move || {
+        // Retained by the container node; see reactive_text.
+        let handle = create_effect(move || {
+            let Some(res) = container_res.upgrade() else {
+                return;
+            };
             let val: R = f_clone();
             let resolved_node = val.render_dynamic();
 
-            // Clear the existing content of the container.
+            // Clear the existing content: drop ownership of the old children
+            // (disposing their effects) and remove them from the DOM.
+            {
+                let mut res = res.borrow_mut();
+                res.children.clear();
+            }
             while let Some(child) = container_raw.first_child() {
                 container_raw.remove_child(&child).unwrap();
             }
 
+            res.borrow_mut().absorb(&resolved_node.res);
             container_raw
                 .append_child(&resolved_node.raw_node)
                 .expect("Velo: Failed to append dynamic expression variant");
-        }));
-
+        });
+        container.retain_effect(handle);
         container
     }
+}
+
+/// Plan minimal DOM moves for a keyed reconciliation pass.
+///
+/// `live_old` is the previous key order with stale keys already removed;
+/// `new` is the target order. Returns one flag per entry of `new`: `true`
+/// means that row must be re-inserted (moved or freshly inserted), `false`
+/// means it is already positioned correctly.
+///
+/// A row moves only when it is not already immediately after its new
+/// predecessor — so front-evicting rows (log trim), appending, and pure
+/// removals cost zero moves, while reorders move only the rows that actually
+/// changed position. Host-testable (pure `Vec` logic, no DOM).
+pub(crate) fn plan_keyed_moves<K: Eq>(live_old: &[K], new: &[K]) -> Vec<bool> {
+    let mut arr: Vec<&K> = live_old.iter().collect();
+    let mut moves = Vec::with_capacity(new.len());
+    for (i, k) in new.iter().enumerate() {
+        if arr.get(i) == Some(&k) {
+            moves.push(false);
+        } else {
+            if let Some(p) = arr.iter().position(|x| *x == k) {
+                arr.remove(p);
+            }
+            arr.insert(i, k);
+            moves.push(true);
+        }
+    }
+    moves
 }
 
 /// Reactive two-branch control flow backing `<Show>` / `<Suspense>`.
@@ -1832,8 +2198,18 @@ where
     let content_raw = content.raw_node.clone();
     let fallback_raw = fallback.raw_node.clone();
 
-    // Retained (leaked) for the fragment's lifetime; see reactive_text.
-    std::mem::forget(create_effect(move || {
+    // The container owns both branch subtrees for its whole lifetime: the
+    // effect closure only swaps raw Nodes, so ownership lives here and the
+    // branches' effects/listeners survive across swaps (and are disposed
+    // when the container drops).
+    {
+        let mut res = container.res.borrow_mut();
+        res.absorb(&content.res);
+        res.absorb(&fallback.res);
+    }
+
+    // Retained by the container node; see reactive_text.
+    let handle = create_effect(move || {
         while let Some(child) = container_raw.first_child() {
             let _ = container_raw.remove_child(&child);
         }
@@ -1843,7 +2219,8 @@ where
             fallback_raw.clone()
         };
         let _ = container_raw.append_child(&active);
-    }));
+    });
+    container.retain_effect(handle);
 
     container
 }
@@ -1874,13 +2251,25 @@ where
 {
     let container = DomNode::display_contents();
     let container_raw = container.raw_node.clone();
+    let container_res = Rc::downgrade(&container.res);
+    container.res.borrow_mut().absorb(&fallback.res);
     if let Err(_) = container_raw.append_child(&fallback.raw_node) {}
 
     wasm_bindgen_futures::spawn_local(async move {
         let node = loader().await;
+        let Some(res) = container_res.upgrade() else {
+            return; // container dropped while loading; nothing to attach to
+        };
+        // Swap ownership: the previous child (fallback or last loaded node)
+        // is released, the freshly loaded node becomes the owned child.
+        {
+            let mut res = res.borrow_mut();
+            res.children.clear();
+        }
         while let Some(child) = container_raw.first_child() {
             let _ = container_raw.remove_child(&child);
         }
+        res.borrow_mut().absorb(&node.res);
         let _ = container_raw.append_child(&node.raw_node);
     });
 
@@ -1901,6 +2290,7 @@ pub fn mount_to_id(id: &str, root_node: DomNode) {
     container
         .append_child(&root_node.raw_node)
         .expect("Velo: Failed to mount root node allocation to layout tree container target");
+    retain_root(&root_node);
 }
 
 // ---------------------------------------------------------------------------
@@ -1919,20 +2309,44 @@ pub struct RootHandle {
 }
 
 impl RootHandle {
-    /// Remove the root node(s) from the DOM. Safe to call multiple times.
-    pub fn unmount(self) {
+    /// Remove the root node(s) from the DOM and dispose the app's root
+    /// resources (effects/listeners cascade). Safe to call multiple times.
+    pub fn unmount(mut self) {
+        self.dispose_root();
         if let Some(parent) = self.root.raw_node.parent_node() {
             let _ = parent.remove_child(&self.root.raw_node);
         }
+    }
+
+    fn dispose_root(&mut self) {
+        MOUNTED_ROOT_RES.with(|m| {
+            m.borrow_mut().retain(|r| !Rc::ptr_eq(r, &self.root.res));
+        });
+        let mut res = self.root.res.borrow_mut();
+        res.children.clear();
+        res.effects.clear();
     }
 }
 
 impl Drop for RootHandle {
     fn drop(&mut self) {
-        // Don't automatically unmount on drop - the node stays mounted in the DOM.
-        // User must explicitly call .unmount() to remove it.
+        // Don't automatically unmount on drop - the node stays mounted in the DOM
+        // and its resources stay alive via MOUNTED_ROOT_RES.
+        // User must explicitly call .unmount() to tear everything down.
         // This allows `mount()` to be called without storing the handle.
     }
+}
+
+thread_local! {
+    /// Root resources of every mounted app. Keeps the root node's effects and
+    /// listeners alive for the app lifetime even when the `RootHandle`
+    /// returned by [`mount`] is dropped (the common `mount(app);` idiom).
+    /// `RootHandle::unmount` removes the entry, cascading disposal.
+    static MOUNTED_ROOT_RES: RefCell<Vec<Rc<RefCell<NodeRes>>>> = RefCell::new(Vec::new());
+}
+
+fn retain_root(root: &DomNode) {
+    MOUNTED_ROOT_RES.with(|m| m.borrow_mut().push(Rc::clone(&root.res)));
 }
 
 /// Convenience: mount a `DomNode` tree into `document.body()` as a fragment
@@ -1968,6 +2382,7 @@ pub fn mount_at(target: &web_sys::Node, root: DomNode) -> RootHandle {
     target
         .append_child(&root.raw_node)
         .expect("Velo: Failed to mount root node into target");
+    retain_root(&root);
     RootHandle { root }
 }
 
@@ -2073,6 +2488,7 @@ pub fn mount_to_id_deprecated(id: &str, root_node: DomNode) {
     container
         .append_child(&root_node.raw_node)
         .expect("Velo: Failed to mount root node allocation to layout tree container target");
+    retain_root(&root_node);
 }
 
 /// Static, non-reactive conditional rendering (direct API only).
@@ -2426,8 +2842,11 @@ impl FRouter {
         let wrapper_raw = view_wrapper.raw_node.clone();
         let child_tracker = Rc::clone(&current_child);
 
-        // This effect executes SURGICALLY only when the URL changes
-        std::mem::forget(create_effect(move || {
+        // This effect executes SURGICALLY only when the URL changes. Retained
+        // by the wrapper node: disposed when the wrapper drops. The old page
+        // node held by `child_tracker` drops on swap, disposing the page's
+        // effects/listeners.
+        view_wrapper.retain_effect(create_effect(move || {
             let path = CURRENT_PATH.with(|p| p.get());
 
             // Clean up previous view node from browser memory layout tree if it exists
@@ -2435,8 +2854,10 @@ impl FRouter {
                 let _ = wrapper_raw.remove_child(&old_node.raw_node);
             }
 
-            // Build the new page node matched via the developer's closure
-            let new_page_node = routes_matcher(&path);
+            // Build the new page node matched via the developer's closure —
+            // inside a scope so effects created while building the page are
+            // attached to the page node and disposed on the next navigation.
+            let new_page_node = scoped_node(|| routes_matcher(&path));
 
             wrapper_raw
                 .append_child(&new_page_node.raw_node)
@@ -2519,7 +2940,8 @@ pub fn Router(props: RouterProps) -> DomNode {
     let outlet_c = outlet.clone();
 
     let render_count = std::cell::Cell::new(0u32);
-    std::mem::forget(create_effect(move || {
+    // Retained by the wrapper node (see FRouter::new): disposed on unmount.
+    view_wrapper.retain_effect(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
         render_count.set(render_count.get() + 1);
 
@@ -2551,11 +2973,15 @@ pub fn Router(props: RouterProps) -> DomNode {
             }
             // The same outlet is reused across rebuilds (it's just a Node);
             // a rebuilt shell around it resets layout-local state, matching
-            // Next.js segment-layout remount semantics.
-            let mut shell = outlet_c.clone();
-            for l in &chain {
-                shell = l(shell);
-            }
+            // Next.js segment-layout remount semantics. Scope the build so
+            // effects created by layout fns attach to the shell node.
+            let shell = scoped_node(|| {
+                let mut shell = outlet_c.clone();
+                for l in &chain {
+                    shell = l(shell);
+                }
+                shell
+            });
             let _ = wrapper_raw.append_child(&shell.raw_node);
             *shell_c.borrow_mut() = Some(shell);
             *chain_c.borrow_mut() = chain;
@@ -2570,9 +2996,11 @@ pub fn Router(props: RouterProps) -> DomNode {
             let _ = outlet_raw.remove_child(&old.raw_node);
         }
         let new_leaf = match matched {
-            Some(route) => (route.component)(),
+            // Scope the page build: effects created while rendering the page
+            // attach to the leaf node and are disposed on the next navigation.
+            Some(route) => scoped_node(|| (route.component)()),
             None => {
-                let mut fallback = DomNode::element("h1");
+                let fallback = DomNode::element("h1");
                 fallback.append(&DomNode::text("404 - Page Not Found"));
                 fallback
             }
@@ -2838,6 +3266,9 @@ pub mod prelude {
     // that single import (macro + value namespaces are both covered by one use).
     pub use crate::{context, effect, provide};
 
+    // Re-export the DX toolkit: timers/debounce, SSE, stream + scroll helpers.
+    pub use crate::{debounced, interval, scroll_to_bottom, sse, stream_lines, timeout, LineSplitter};
+
     // Re-export the built-in control-flow component `Show`.
     pub use crate::Show;
 }
@@ -2932,4 +3363,267 @@ mod reactivity_tests {
         value.set(Some(7));
         assert_eq!(*seen.borrow(), vec![7], "effect did not re-run after source became Some");
     }
+
+    #[test]
+    fn dropping_handle_disposes_effect() {
+        let base = live_effect_count();
+        let s = signal!(0i32);
+        let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen_c = seen.clone();
+        let h = create_effect(move || seen_c.borrow_mut().push(s.get()));
+        assert_eq!(live_effect_count(), base + 1, "effect not registered");
+        s.set(1);
+        assert_eq!(*seen.borrow(), vec![0, 1]);
+        drop(h);
+        assert_eq!(
+            live_effect_count(),
+            base,
+            "dropping last handle did not dispose"
+        );
+        s.set(2);
+        assert_eq!(*seen.borrow(), vec![0, 1], "disposed effect re-ran");
+    }
+
+    #[test]
+    fn effect_handle_clones_share_one_disposal() {
+        let base = live_effect_count();
+        let s = signal!(0i32);
+        let h = create_effect(move || {
+            let _ = s.get();
+        });
+        let h2 = h.clone();
+        drop(h);
+        assert_eq!(
+            live_effect_count(),
+            base + 1,
+            "effect disposed while a handle clone is still alive"
+        );
+        drop(h2);
+        assert_eq!(
+            live_effect_count(),
+            base,
+            "last handle drop did not dispose"
+        );
+    }
+
+    #[test]
+    fn cleanup_runs_exactly_once_on_dispose() {
+        let cleaned = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        let s = signal!(0i32);
+        let cleaned_c = cleaned.clone();
+        let h = create_effect_with_cleanup(
+            move || {
+                let _ = s.get();
+            },
+            move || cleaned_c.set(cleaned_c.get() + 1),
+        );
+        s.set(1);
+        assert_eq!(cleaned.get(), 0, "cleanup ran while effect alive");
+        drop(h);
+        assert_eq!(cleaned.get(), 1, "cleanup did not run on dispose");
+        // Dropping again is impossible (moved), but a stale flush must not
+        // re-run cleanup: poke the signal once more.
+        s.set(2);
+        assert_eq!(cleaned.get(), 1, "cleanup ran twice");
+    }
+
+    #[test]
+    fn scope_guard_disposes_created_effects() {
+        let base = live_effect_count();
+        let s = signal!(0i32);
+        let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen_c = seen.clone();
+        let (_value, guard) = scope(move || {
+            let seen_inner = seen_c.clone();
+            let h = create_effect(move || seen_inner.borrow_mut().push(s.get()));
+            // Local handle dropped immediately: the scope's adopted clone
+            // keeps the effect alive (last-owner semantics).
+            drop(h);
+            assert_eq!(
+                live_effect_count(),
+                base + 1,
+                "scope did not adopt the effect"
+            );
+        });
+        assert_eq!(live_effect_count(), base + 1, "effect died before guard drop");
+        s.set(1);
+        assert_eq!(*seen.borrow(), vec![0, 1], "effect not reactive while guarded");
+        drop(guard);
+        assert_eq!(live_effect_count(), base, "guard drop did not dispose");
+        s.set(2);
+        assert_eq!(*seen.borrow(), vec![0, 1], "effect re-ran after guard drop");
+    }
+
+    #[test]
+    fn effect_macro_is_app_lifetime_without_scope() {
+        let base = live_effect_count();
+        let s = signal!(0i32);
+        effect!(move || {
+            let _ = s.get();
+        });
+        assert_eq!(
+            live_effect_count(),
+            base + 1,
+            "effect! outside a scope must be retained for the app lifetime"
+        );
+        // No scope opened: effect! must not have adopted it anywhere, so it
+        // keeps reacting.
+        s.set(1);
+        assert_eq!(live_effect_count(), base + 1);
+    }
+
+    #[test]
+    fn effect_macro_is_scope_owned_inside_scope() {
+        let base = live_effect_count();
+        let s = signal!(0i32);
+        let (_value, guard) = scope(move || {
+            effect!(move || {
+                let _ = s.get();
+            });
+        });
+        assert_eq!(live_effect_count(), base + 1, "scoped effect! not adopted");
+        drop(guard);
+        assert_eq!(
+            live_effect_count(),
+            base,
+            "guard drop did not dispose effect!"
+        );
+    }
+
+    #[test]
+    fn plan_keyed_moves_same_order_is_noop() {
+        let keys = vec!["a", "b", "c"];
+        assert_eq!(plan_keyed_moves(&keys, &keys), vec![false, false, false]);
+    }
+
+    #[test]
+    fn plan_keyed_moves_front_insert_and_append() {
+        // Front insert: only the new row is placed, existing order preserved.
+        assert_eq!(
+            plan_keyed_moves(&["a", "b"], &["x", "a", "b"]),
+            vec![true, false, false]
+        );
+        // Append: nothing moves.
+        assert_eq!(
+            plan_keyed_moves(&["a", "b"], &["a", "b", "x"]),
+            vec![false, false, true]
+        );
+        // Pure removal (stales already evicted from live_old): no moves.
+        assert_eq!(plan_keyed_moves(&["b", "c"], &["b", "c"]), vec![false, false]);
+        // Front eviction (log-style trim): no moves.
+        assert_eq!(
+            plan_keyed_moves(&["b", "c", "d"], &["b", "c", "d"]),
+            vec![false, false, false]
+        );
+    }
+
+    #[test]
+    fn plan_keyed_moves_reorder_applies_to_target() {
+        // Apply the plan exactly like the reconciler does (insert at target
+        // index) and assert the resulting order equals the target.
+        fn apply<'a>(live_old: &[&'a str], new: &[&'a str]) -> Vec<&'a str> {
+            // The reconciler evicts stale rows before planning and applying.
+            let mut arr: Vec<&str> = live_old
+                .iter()
+                .filter(|x| new.contains(x))
+                .cloned()
+                .collect();
+            let moves = plan_keyed_moves(&arr, new);
+            for (i, k) in new.iter().enumerate() {
+                if moves[i] {
+                    if let Some(p) = arr.iter().position(|x| x == k) {
+                        arr.remove(p);
+                    }
+                    arr.insert(i, k);
+                }
+            }
+            arr
+        }
+        let cases: Vec<(Vec<&str>, Vec<&str>)> = vec![
+            (vec!["a", "b", "c"], vec!["c", "a", "b"]),
+            (vec!["a", "b"], vec!["b", "x", "a"]),
+            (vec!["a", "b", "c"], vec!["b", "a", "d", "c"]),
+            (vec!["a"], vec!["b", "c", "a"]),
+            (vec!["a", "b", "c", "d"], vec!["d", "c", "b", "a"]),
+            (vec!["a", "b"], vec!["b", "a", "x"]),
+            (vec!["a", "b"], vec!["x", "y"]),
+        ];
+        for (old, new) in cases {
+            let got = apply(&old, &new);
+            assert_eq!(got, new, "apply({:?}, {:?}) produced {:?}", old, new, got);
+        }
+    }
+
+    #[test]
+    fn plan_keyed_moves_minimality() {
+        // A pure append plus one front move must flag exactly two rows.
+        let moves = plan_keyed_moves(&["a", "b", "c"], &["c", "a", "b", "x"]);
+        assert_eq!(moves, vec![true, false, false, true]);
+        // Unchanged prefix keeps zero moves even when the tail churns.
+        let moves = plan_keyed_moves(&["a", "b"], &["a", "d", "b"]);
+        assert_eq!(moves[0], false, "unchanged prefix row flagged as moved");
+    }
+
+    #[test]
+    fn signal_vec_push_capped_keeps_newest() {
+        let v = SignalVec::new(Vec::new());
+        for i in 0..5 {
+            v.push_capped(i, 3);
+        }
+        assert_eq!(v.get(), vec![2, 3, 4], "front overflow not evicted");
+    }
+
+    #[test]
+    fn signal_vec_insert_front_capped_keeps_newest_first() {
+        let v = SignalVec::new(Vec::new());
+        for i in 0..5 {
+            v.insert_front_capped(i, 3);
+        }
+        assert_eq!(
+            v.get(),
+            vec![4, 3, 2],
+            "back overflow not evicted / wrong order"
+        );
+        // cap 0 clears every insert.
+        v.insert_front_capped(9, 0);
+        assert!(v.is_empty());
+    }
+
+    #[test]
+    fn line_splitter_reassembles_chunks() {
+        let mut sp = crate::io::LineSplitter::new();
+        assert!(sp.push("hel").is_empty());
+        assert_eq!(sp.push("lo\nwor"), vec!["hello".to_string()]);
+        assert_eq!(
+            sp.push("ld\r\n"),
+            vec!["world".to_string()],
+            "\\r\\n not stripped"
+        );
+        assert_eq!(sp.finish(), None, "empty tail must be None");
+
+        let mut sp = crate::io::LineSplitter::new();
+        assert!(sp.push("tail-without-newline").is_empty());
+        assert_eq!(sp.finish(), Some("tail-without-newline".to_string()));
+        assert_eq!(sp.finish(), None, "finish must not repeat");
+    }
+}
+
+/// Compute Shannon entropy (base-2) over byte slice.
+/// Returns entropy in bits per byte (0.0..=8.0).
+pub fn shannon_entropy_bytes(bytes: &[u8]) -> f64 {
+    let len = bytes.len() as f64;
+    if len == 0.0 { return 0.0; }
+    let mut freq = [0usize; 256];
+    for &b in bytes { freq[b as usize] += 1; }
+    let mut entropy = 0.0f64;
+    for f in freq.iter().take(256) {
+        if *f == 0 { continue; }
+        let p = (*f as f64) / len;
+        entropy -= p * p.log2();
+    }
+    entropy
+}
+
+pub fn shannon_entropy_str(s: &str) -> f64 {
+    shannon_entropy_bytes(s.as_bytes())
 }
