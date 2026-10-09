@@ -66,3 +66,33 @@ let color = signal!("red".to_string());
 let c = color.clone();
 btn.reactive_style("color", move || c.get());
 ```
+
+---
+
+## 4. Static Attributes (no effect)
+
+Literal `view!` attributes call these directly — no effect, no subscription:
+
+```rust
+// Set/remove an attribute imperatively
+div.set_attr("data-state", "open");
+div.remove_attr("data-state");
+```
+
+---
+
+## 5. Resource Ownership
+
+```rust
+// Retain an effect handle for this node's lifetime (non-leaking
+// alternative to mem::forget); disposed when the node drops.
+btn.retain_effect(handle);
+btn.retain_effects(vec![handle_a, handle_b]);
+
+// Stop owning a child's resources after removing it, so its
+// effects/listeners are disposed instead of lingering.
+parent.release(&child);
+```
+
+See [Effect Lifecycle & Resource Cleanup](effect-cleanup.md) for the full
+ownership model (absorption, scopes, and disposal rules).

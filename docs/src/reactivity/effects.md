@@ -26,7 +26,36 @@ let handle = create_effect(move || {
 
 ---
 
-## 2. Cleanup Closures with `create_effect_with_cleanup`
+## 2. Effect Lifetimes: Handles & Scopes
+
+`create_effect` returns an `EffectHandle`. **Dropping the last handle disposes
+the effect** — cleanup runs, and future signal changes no longer trigger it:
+
+```rust
+let handle = create_effect(move || { /* ... */ });
+drop(handle); // disposed
+```
+
+Handles are `Clone`; whichever clone drops last wins, so you can pass them
+around freely.
+
+`effect!(...)` is the shorthand with owner-aware defaults:
+
+```rust
+// App setup (no scope open): retained for the app lifetime.
+effect!(move || analytics.track(route.get()));
+
+// Inside a #[component] / keyed row / velo::scope: adopted by the owner and
+// disposed when that owner's node is torn down.
+effect!(move || render_log(tail.get()));
+```
+
+See [Effect Lifecycle & Resource Cleanup](../dom-and-lifecycle/effect-cleanup.md)
+for the ownership model in detail.
+
+---
+
+## 3. Cleanup Closures with `create_effect_with_cleanup`
 
 When setting up browser timers, web socket subscriptions, or external event listeners inside an effect, use `create_effect_with_cleanup`:
 

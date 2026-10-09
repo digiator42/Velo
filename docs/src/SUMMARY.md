@@ -50,6 +50,7 @@
 - [Mounting the Application](dom-and-lifecycle/mounting.md)
 - [Effect Lifecycle & Resource Cleanup](dom-and-lifecycle/effect-cleanup.md)
 - [The `DomNode` API](dom-and-lifecycle/dom-node-api.md)
+- [Timers, SSE & Streams](dom-and-lifecycle/timers-and-streams.md)
 - [Error Boundaries](dom-and-lifecycle/error-boundaries.md)
 
 # Best Practices & Architecture

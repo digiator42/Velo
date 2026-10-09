@@ -59,7 +59,27 @@ items.with_mut(|vec| {
 
 ---
 
-## 4. Keyed Rendering
+## 4. Bounded Collections (capped helpers)
+
+Two helpers keep a collection at a fixed maximum size with a **single**
+notification, no matter how many items were evicted:
+
+```rust
+// Rolling window: push newest, evict from the FRONT past the cap.
+// (e.g. keep only the last 200 log lines)
+logs.push_capped(log_line, 200);
+
+// Newest-first log: insert at the FRONT, evict from the BACK past the cap.
+// (e.g. a chat transcript where old messages fall off the end)
+messages.insert_front_capped(message, 500);
+```
+
+Both are the right tool for high-frequency streams (logs, chat, tickers)
+where unbounded growth would otherwise leak memory and slow reconciliation.
+
+---
+
+## 5. Keyed Rendering
 
 Combine `SignalVec` with Velo's keyed `for` loop in the `view!` macro to reconcile DOM nodes by stable key:
 

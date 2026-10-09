@@ -876,19 +876,31 @@ where
             write.set(next);
         }
     });
-    Memo {
-        read,
-        _handle: handle,
+    // Ownership mirrors `effect!`: inside an open scope (component body,
+    // keyed-row render, `scope()`) `create_effect` already adopted a clone
+    // into that scope, so the effect tears down with its owner and this
+    // handle is redundant. Outside any scope, retain it for the app lifetime
+    // instead of disposing the memo's effect while the `Memo` may still be
+    // read. Either way the `Memo` itself stays a `Copy` shared handle like
+    // `ReadSignal`/`RwSignal`, freely movable into any number of `move ||`
+    // closures without `.clone()` boilerplate.
+    if !effect_scope_active() {
+        std::mem::forget(handle);
     }
+    Memo { read }
 }
 
 /// A memo is a `ReadSignal<T>` whose value is recomputed by an effect whenever
-/// one of its dependencies changes. Holding the `Memo` keeps the underlying
-/// effect alive; dropping it disposes the effect.
-#[derive(Clone)]
+/// one of its dependencies changes.
+///
+/// `Memo` is `Copy` — a thin shared handle over the cached value (like
+/// `ReadSignal`/`RwSignal`), so it can be captured by any number of `move ||`
+/// closures. The backing effect is owned by the enclosing scope when created
+/// inside one (torn down with its owner), and retained for the app lifetime
+/// otherwise — the same rule as [`effect!`].
+#[derive(Clone, Copy)]
 pub struct Memo<T> {
     read: ReadSignal<T>,
-    _handle: EffectHandle,
 }
 
 impl<T: Clone + 'static> Deref for Memo<T> {

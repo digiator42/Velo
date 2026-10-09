@@ -308,7 +308,14 @@ impl Parse for VNode {
             // Keep your existing namespace colon tracking (e.g., on:click)
             if input.peek(Token![:]) {
                 input.parse::<Token![:]>()?;
-                let sub_key = input.call(syn::Ident::parse_any)?.to_string();
+                let mut sub_key = input.call(syn::Ident::parse_any)?.to_string();
+                // Loop to catch hyphens after the colon too
+                // (e.g., class:log-row-selected).
+                while input.peek(Token![-]) {
+                    input.parse::<Token![-]>()?;
+                    let next_part = input.call(syn::Ident::parse_any)?.to_string();
+                    sub_key = format!("{}-{}", sub_key, next_part);
+                }
                 key = format!("{}:{}", key, sub_key);
             }
 
@@ -424,7 +431,7 @@ impl ToTokens for VNode {
                     tokens.extend(quote! {
                         {
                             let loop_fragment = velo::DomNode::element("div");
-                            loop_fragment.reactive_attribute("class", || "contents".into());
+                            loop_fragment.set_attr("class", "contents");
 
                             let list = (#expr).clone();
                             let key_fn = #key_expr;
@@ -776,6 +783,11 @@ impl ToTokens for VNode {
                             // Evaluate (#val) once into a temporary, then clone that
                             // temporary into each generated closure so there's no shared
                             // variable that both closures try to move.
+                            //
+                            // Closures capture the raw Node (a JS handle), never a
+                            // `DomNode` clone: the effect is retained BY the node's
+                            // resource, so capturing the node itself would form an
+                            // ownership cycle (res -> effect -> closure -> res).
                             let event_name_str: syn::LitStr = syn::parse_quote! { "input" };
                             let field_name: syn::LitStr = syn::parse_quote! { "value" };
                             setup_statements.push(quote! {
@@ -784,14 +796,14 @@ impl ToTokens for VNode {
                                 let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM: set live property AND reactive attribute.
                                 {
-                                    let bind_node = parent_node.clone();
+                                    let bind_node = parent_node.raw_node.clone();
                                     let bind_sig_1 = bind_sig_1.clone();
                                     parent_node.reactive_attribute(#field_name, move || {
                                         use wasm_bindgen::JsCast;
                                         let v = velo::signal_value!(bind_sig_1);
                                         let s = format!("{}", v);
                                         // Also set live DOM property for correct IME/reset behavior
-                                        if let Ok(el) = bind_node.raw_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
+                                        if let Ok(el) = bind_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
                                             let _ = el.set_value(&s);
                                         }
                                         s
@@ -799,7 +811,7 @@ impl ToTokens for VNode {
                                 }
                                 // Forward DOM -> signal (on input, read element and set signal).
                                 {
-                                    let bind_node = parent_node.clone();
+                                    let bind_node = parent_node.raw_node.clone();
                                     parent_node.on(#event_name_str, move |e: web_sys::Event| {
                                         use wasm_bindgen::JsCast;
                                         let target = e.target().expect("bind:value event has no target");
@@ -825,7 +837,7 @@ impl ToTokens for VNode {
                                 let bind_sig_2 = bind_tmp.clone();
                                 // Forward signal -> DOM: set live property AND reactive attribute.
                                 {
-                                    let bind_node = parent_node.clone();
+                                    let bind_node = parent_node.raw_node.clone();
                                     let bind_sig_1 = bind_sig_1.clone();
                                     parent_node.reactive_attribute("checked", move || {
                                         use wasm_bindgen::JsCast;
@@ -834,7 +846,7 @@ impl ToTokens for VNode {
                                         // so materialise an owned String (not `&str`).
                                         let s: String = if checked { "checked".into() } else { "".into() };
                                         // Also set live DOM property for correct behavior
-                                        if let Ok(el) = bind_node.raw_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
+                                        if let Ok(el) = bind_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
                                             let _ = el.set_checked(checked);
                                         }
                                         s
@@ -842,7 +854,7 @@ impl ToTokens for VNode {
                                 }
                                 // Forward DOM -> signal (on change, read element and set signal).
                                 {
-                                    let bind_node = parent_node.clone();
+                                    let bind_node = parent_node.raw_node.clone();
                                     parent_node.on(#event_name_str, move |e: web_sys::Event| {
                                         use wasm_bindgen::JsCast;
                                         let target = e.target().expect("bind:checked event has no target");
@@ -856,23 +868,62 @@ impl ToTokens for VNode {
                             || key == "selected"
                             || key == "readonly"
                         {
-                            setup_statements.push(quote! {
-                            let p_node = parent_node.clone();
-                            // Use the top-level unified facade pathway
-                            velo::create_effect({
-                                let val_sig = move || #val;
-                                move || {
-                                    use wasm_bindgen::JsCast;
-                                    if let Ok(el) = p_node.raw_node.clone().dyn_into::<web_sys::Element>() {
-                                        if val_sig() {
-                                            let _ = el.set_attribute(#key, "");
-                                        } else {
-                                            let _ = el.remove_attribute(#key);
+                            // Literal flags (`disabled=true`) are a one-shot DOM
+                            // write — no effect, no closure. Anything reactive
+                            // keeps an effect, retained by the node (and adopted
+                            // by its enclosing scope) instead of being dropped.
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Bool(b),
+                                ..
+                            }) = val
+                            {
+                                let lit = b.value;
+                                let setter = if lit {
+                                    quote! { parent_node.set_attr(#key, ""); }
+                                } else {
+                                    quote! { parent_node.remove_attr(#key); }
+                                };
+                                setup_statements.push(setter);
+                            } else {
+                                setup_statements.push(quote! {
+                                    let p_node = parent_node.raw_node.clone();
+                                    parent_node.retain_effect(velo::create_effect({
+                                        let val_sig = move || #val;
+                                        move || {
+                                            use wasm_bindgen::JsCast;
+                                            if let Ok(el) = p_node.clone().dyn_into::<web_sys::Element>() {
+                                                if val_sig() {
+                                                    let _ = el.set_attribute(#key, "");
+                                                } else {
+                                                    let _ = el.remove_attribute(#key);
+                                                }
+                                            }
                                         }
-                                    }
-                                }
-                            });
-                        });
+                                    }));
+                                });
+                            }
+                        } else if let syn::Expr::Lit(syn::ExprLit { lit, .. }) = val {
+                            // Literal string/int/bool attributes (`placeholder="Search"`,
+                            // `tabindex="0"`, `hidden=false`): a direct DOM write —
+                            // creating an effect per literal would waste memory on
+                            // every static tag. Floats (and anything exotic) keep the
+                            // reactive path to avoid suffix/formatting quirks.
+                            let lit_str: Option<String> = match lit {
+                                syn::Lit::Str(s) => Some(s.value()),
+                                syn::Lit::Int(i) => Some(i.base10_digits().to_string()),
+                                syn::Lit::Bool(b) => Some(b.value.to_string()),
+                                _ => None,
+                            };
+                            if let Some(lit_str) = lit_str {
+                                setup_statements.push(quote! {
+                                    parent_node.set_attr(#key, #lit_str);
+                                });
+                            } else {
+                                let rv = reactive_value(val);
+                                setup_statements.push(quote! {
+                                    parent_node.reactive_attribute(#key, move || format!("{}", #rv));
+                                });
+                            }
                         } else {
                             let rv = reactive_value(val);
                             setup_statements.push(quote! {
@@ -891,7 +942,11 @@ impl ToTokens for VNode {
                         let mut static_base: Vec<String> = Vec::new();
                         let mut reactive_base: Vec<&syn::Expr> = Vec::new();
                         for base in &base_classes {
-                            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = base {
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(s),
+                                ..
+                            }) = base
+                            {
                                 static_base.push(s.value());
                             } else {
                                 reactive_base.push(base);
@@ -910,22 +965,68 @@ impl ToTokens for VNode {
                             })
                             .collect();
 
-                        setup_statements.push(quote! {
-                            parent_node.reactive_classes(#base_static, vec![ #(#toggle_calls)* ]);
-                        });
-
-                        for rb in reactive_base {
-                            let rv = reactive_value(rb);
+                        if reactive_base.is_empty() {
                             setup_statements.push(quote! {
-                                parent_node.reactive_attribute("class", move || format!("{}", #rv));
+                                parent_node.reactive_classes(#base_static, vec![ #(#toggle_calls)* ]);
+                            });
+                        } else {
+                            // A reactive `class={...}` base and `class:` toggles
+                            // must share ONE writer on the `class` attribute.
+                            // Emitting `reactive_classes` + a separate
+                            // `reactive_attribute("class", ...)` lets whichever
+                            // effect re-runs last wipe the other's classes
+                            // (e.g. base "log-row info" collapsing to "").
+                            // Fold everything into a single reactive_attribute
+                            // effect that reads the base and every toggle, so
+                            // one effect owns the attribute end-to-end.
+                            let reactive_vals: Vec<proc_macro2::TokenStream> = reactive_base
+                                .iter()
+                                .map(|rb| reactive_value(rb))
+                                .collect();
+                            let toggle_checks: Vec<proc_macro2::TokenStream> = toggle_classes
+                                .iter()
+                                .map(|(name, val)| {
+                                    let name_lit = syn::LitStr::new(name, proc_macro2::Span::call_site());
+                                    let rv = reactive_value(val);
+                                    quote! { if #rv { __parts.push(#name_lit.to_string()); } }
+                                })
+                                .collect();
+                            setup_statements.push(quote! {
+                                parent_node.reactive_attribute("class", move || {
+                                    let mut __parts: Vec<String> = Vec::new();
+                                    if !#base_static.is_empty() { __parts.push(#base_static.to_string()); }
+                                    #(
+                                        {
+                                            let __b: String = format!("{}", #reactive_vals);
+                                            for __c in __b.split_whitespace() {
+                                                __parts.push(__c.to_string());
+                                            }
+                                        }
+                                    )*
+                                    #(#toggle_checks)*
+                                    __parts.join(" ")
+                                });
                             });
                         }
                     } else {
                         for base in base_classes {
-                            let rv = reactive_value(base);
-                            setup_statements.push(quote! {
-                                parent_node.reactive_attribute("class", move || format!("{}", #rv));
-                            });
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(s),
+                                ..
+                            }) = base
+                            {
+                                // Static `class="..."` with no toggles: one direct
+                                // write instead of a lifetime-long effect.
+                                let joined = s.value();
+                                setup_statements.push(quote! {
+                                    parent_node.set_attr("class", #joined);
+                                });
+                            } else {
+                                let rv = reactive_value(base);
+                                setup_statements.push(quote! {
+                                    parent_node.reactive_attribute("class", move || format!("{}", #rv));
+                                });
+                            }
                         }
                     }
 
@@ -1043,12 +1144,24 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Swap the parameter list for a single `props: <Name>Props` argument.
     func.sig.inputs.clear();
-    func.sig.inputs.push(syn::parse_quote! { props: #props_ident });
+    func.sig
+        .inputs
+        .push(syn::parse_quote! { props: #props_ident });
 
-    // Prepend the destructure statement, keeping the existing body as-is.
+    // Wrap the whole body in `velo::scoped_node`: every effect created while
+    // the component builds (`effect!`, helper bindings, nested components'
+    // leftovers) is adopted by the scope and attached to the returned node,
+    // so tearing the node down disposes them instead of leaking for the app
+    // lifetime. Early `return`s inside the body return from the closure, so
+    // the scope always closes.
     let existing_stmts = std::mem::take(&mut func.block.stmts);
-    func.block.stmts.push(destructure);
-    func.block.stmts.extend(existing_stmts);
+    let wrapped: syn::Expr = syn::parse_quote! {
+        velo::scoped_node(move || {
+            #destructure
+            #(#existing_stmts)*
+        })
+    };
+    func.block.stmts.push(syn::Stmt::Expr(wrapped, None));
 
     // Force the return type to DomNode.
     func.sig.output = syn::ReturnType::Type(
