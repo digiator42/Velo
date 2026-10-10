@@ -41,17 +41,14 @@ pub fn page() -> DomNode {
     let memory_usage = signal!(60);
     let active_connections = signal!(1200);
 
-    let cpu = cpu_load.clone();
-    let mem = memory_usage.clone();
-    let conn = active_connections.clone();
-
-    // Stream 20 updates per second
+    // Stream 20 updates per second (signals are Copy: the same handles move
+    // into the timer and are still usable in the view below).
     let mut ticker = 0;
     Interval::new(50, move || {
         ticker += 1;
-        cpu.set(30 + (ticker % 40));
-        mem.set(50 + (ticker % 30));
-        conn.set(1000 + (ticker % 500));
+        cpu_load.set(30 + (ticker % 40));
+        memory_usage.set(50 + (ticker % 30));
+        active_connections.set(1000 + (ticker % 500));
     }).forget();
 
     view! {

@@ -1878,6 +1878,11 @@ impl DomNode {
     /// wipes the other's classes. Here every contributor records into a single
     /// `Rc<RefCell<BTreeMap<name, bool>>>`, and any change rebuilds the full
     /// `className` from that map, so the base and all toggles always coexist.
+    ///
+    /// Note: this covers *static* (`&'static str`) bases. A *reactive*
+    /// `class={ ... }` base combined with toggles bypasses this method — the
+    /// `view!` macro folds base + toggles into one `reactive_attribute` effect
+    /// instead, so there is still exactly one writer on the attribute.
     pub fn reactive_classes(
         &self,
         base: &str,

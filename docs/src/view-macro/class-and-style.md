@@ -26,6 +26,25 @@ view! {
 * When `is_active.get()` is `true`, `"active"` is added via `element.classList.add("active")`.
 * When `is_active.get()` becomes `false`, `"active"` is removed via `element.classList.remove("active")`.
 * Existing static classes (like `"base-card"`) remain untouched.
+* Toggle names may contain dashes: `class:log-row-selected={ … }` works, as do
+  dashed style properties like `style:font-size={ … }`.
+
+A reactive `class={ … }` base composes with `class:` toggles on the same
+element — the macro folds both into a single writer, so the base is never
+wiped when a toggle flips:
+
+```rust
+let row_class = class_names!("pkt-row", "info");
+
+view! {
+    <div
+        class={ row_class }
+        class:pkt-row-selected={ move || is_selected() }
+    >
+        "…"
+    </div>
+}
+```
 
 ---
 

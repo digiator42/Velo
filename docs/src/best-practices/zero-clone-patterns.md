@@ -14,9 +14,12 @@ let (count, set_count) = create_signal(0);
 let count_for_read = count.clone();
 let set_count_for_write = set_count.clone();
 
-// ✅ RwSignal requires only a single handle clone
+// ✅ RwSignal is Copy: move the one handle anywhere, zero clones
 let count = signal(0);
-let count_for_click = count.clone();
+let on_click = move |_| count.set(count.get() + 1);
+
+// ✅ Memo is Copy too: one derived value, any number of closures
+let doubled = memo!(move || count.get() * 2);
 ```
 
 ---

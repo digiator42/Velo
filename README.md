@@ -346,7 +346,7 @@ Sets `document.title` + `<meta>` tags on each navigation. Stale tags from the pr
 - `crates/velo` — the unified runtime: reactivity, DOM, router, fetch, error overlay.
 - `crates/macro` — proc macros: `view!`, `#[component]`, `routes!`, `#[route]`, `app!`, `route_path!`.
 - `crates/velo-cli` — `velo new` / `velo dev` / `velo build` (wraps Trunk).
-- `examples/` — runnable apps (counter-spa, blog, async-dashboard, features-demo, typed-nav, dynamic, …).
+- `examples/` — runnable apps (counter-spa, blog, async-dashboard, features-demo, typed-nav, dynamic, …), plus real-world submodules: `luxshield` (XDP network shield console) and `cyberflow` (live threat console). Clone with `git clone --recurse-submodules`.
 
 ## Status
 

@@ -12,12 +12,14 @@
 
 ## 2. Moving Captured Variables into Multiple Closures
 
-* **Error**: `use of moved value: 'my_signal'`
-* **Cause**: Moving an un-cloned variable into a closure.
-* **Fix**: Clone the signal handle before the closure:
+* **Error**: `use of moved value: 'my_value'`
+* **Cause**: Moving a non-`Copy` variable into more than one `move` closure.
+* **Fix**: `RwSignal`, `ReadSignal`, `WriteSignal`, and `Memo` are all `Copy`,
+  so reactive handles move freely — no clone needed. Only `SignalVec` and
+  your own data need a `.clone()` per closure:
   ```rust
-  let count_c1 = count.clone();
-  let count_c2 = count.clone();
+  let list_c1 = list.clone();
+  let list_c2 = list.clone();
   ```
 
 ---

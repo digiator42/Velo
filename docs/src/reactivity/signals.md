@@ -16,7 +16,8 @@ let count = signal!(0);
 ```
 
 `signal!` is shorthand for `signal(value)`, which wraps `RwSignal<T>`. One handle
-reads *and* writes, so you clone it once and move it into closures.
+reads *and* writes, and the handle is `Copy`, so you move it into any number
+of closures with no `.clone()` boilerplate.
 
 > `create_signal(value)` still exists and returns the older split `(ReadSignal,
 > WriteSignal)` tuple pair. Prefer `signal!` for new code — the single `RwSignal`
@@ -65,15 +66,16 @@ user.update(|u| {
 
 ---
 
-## 4. Ownership & Clones
+## 4. Ownership & Copies
 
-`RwSignal<T>` implements `Clone`. Cloning a signal handle is cheap — it only
-clones an internal `Rc` reference to the shared signal cell:
+`RwSignal<T>` is `Copy` — a thin shared handle over the signal cell. Move it
+freely into `move` closures; every copy reads and writes the same value:
 
 ```rust
-let count_for_button = count.clone();
-
 let on_click = move |_| {
-    count_for_button.set(count_for_button.get() + 1);
+    count.set(count.get() + 1);
 };
 ```
+
+The same holds for `ReadSignal<T>`, `WriteSignal<T>`, and `Memo<T>`. Only
+`SignalVec<T>` (and your own data) still needs `.clone()` per closure.

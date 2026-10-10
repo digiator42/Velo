@@ -25,16 +25,16 @@ count.update(|c| *c += 1);
 
 ## 2. In Closures and Event Handlers
 
-Instead of cloning separate read and write handles, clone just the single `RwSignal`:
+The single `RwSignal` handle is `Copy`, so it moves into any number of
+closures with no cloning at all:
 
 ```rust
 let count = signal!(0);
-let count_for_btn = count.clone();
 
 view! {
     <div>
         <p>"Count: " { count }</p>
-        <button on:click={ move |_| count_for_btn.set(count_for_btn.get() + 1) }>
+        <button on:click={ move |_| count.set(count.get() + 1) }>
             "Increment"
         </button>
     </div>
