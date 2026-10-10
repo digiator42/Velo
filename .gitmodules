@@ -1,0 +1,6 @@
+[submodule "examples/luxshield"]
+	path = examples/luxshield
+	url = https://github.com/digiator42/LuxShield.git
+[submodule "examples/cyberflow"]
+	path = examples/cyberflow
+	url = https://github.com/digiator42/CyberFlow.git
