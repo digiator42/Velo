@@ -13,7 +13,7 @@ use crate::components::*;
 /// `use_context` (theme).
 #[page]
 pub fn page() -> DomNode {
-    let project_id = FRouter::use_param::<String>("id").unwrap_or_default();
+    let project_id = AppRouter::use_param::<String>("id").unwrap_or_default();
 
     let pid1 = project_id.clone();
     let project = create_resource(move || {
@@ -184,3 +184,4 @@ pub fn page() -> DomNode {
 fn columns_from(groups: &[(Column, Vec<Task>)]) -> Vec<Column> {
     groups.iter().map(|(c, _)| c.clone()).collect()
 }
+

@@ -1,6 +1,6 @@
 # Client-Side Routing Overview
 
-Velo includes a built-in client-side router (part of the unified `velo` crate: `Router`, `Route`, `Link`, `FRouter`) designed specifically for Single Page Applications running in WebAssembly.
+Velo includes a built-in client-side router (part of the unified `velo` crate: `Router`, `Route`, `Link`, `AppRouter`) designed specifically for Single Page Applications running in WebAssembly.
 
 ---
 
@@ -116,4 +116,5 @@ view! {
 ```
 
 See `examples/typed-nav` for a full demo: active-state nav via `route_path!` and literal `to`,
-`navigate_to`, `paths::*` builders, and typed `FRouter::use_param` reads on param pages.
+`navigate_to`, `paths::*` builders, and typed `AppRouter::use_param` reads on param pages.
+

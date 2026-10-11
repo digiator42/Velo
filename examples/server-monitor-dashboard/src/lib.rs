@@ -23,8 +23,8 @@ pub fn main() {
 
 fn monitor() -> DomNode {
     // Easily extract out your dynamic route parameters safely!
-    let cluster_id = FRouter::param("id").unwrap_or_default();
-    let node_id = FRouter::param("new_id").unwrap_or_default();
+    let cluster_id = AppRouter::param("id").unwrap_or_default();
+    let node_id = AppRouter::param("new_id").unwrap_or_default();
 
     view! {
         <div class="page text-center">
@@ -80,3 +80,4 @@ pub fn run_app() {
 
     mount(app_shell);
 }
+

@@ -3,10 +3,10 @@ use velo::prelude::*;
 /// A single post at `/blog/:slug`.
 ///
 /// The `[slug]` directory names the route param; values are read back with
-/// `FRouter::param("slug")` (or the typed `FRouter::use_param`).
+/// `AppRouter::param("slug")` (or the typed `AppRouter::use_param`).
 #[page]
 pub fn page() -> DomNode {
-    let slug = FRouter::param("slug").unwrap_or_else(|| "unknown".to_string());
+    let slug = AppRouter::param("slug").unwrap_or_else(|| "unknown".to_string());
     let title = format!("Post: {slug}");
     view! {
         <article class="post">

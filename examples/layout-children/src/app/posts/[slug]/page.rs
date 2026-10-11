@@ -4,7 +4,7 @@ use velo::prelude::*;
 /// `/posts`, so both shells persist across the navigation (M4 leaf-only swap).
 #[page]
 pub fn page() -> DomNode {
-    let slug = FRouter::param("slug").unwrap_or_else(|| "unknown".to_string());
+    let slug = AppRouter::param("slug").unwrap_or_else(|| "unknown".to_string());
     view! {
         <article class="page">
             <h1>{ format!("Post: {slug}") }</h1>

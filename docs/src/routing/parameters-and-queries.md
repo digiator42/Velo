@@ -20,7 +20,7 @@ use velo::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
-    let user_id = FRouter::use_param::<String>("id").unwrap_or_else(|| "unknown".into());
+    let user_id = AppRouter::use_param::<String>("id").unwrap_or_else(|| "unknown".into());
     view! {
         <div class="user-page">
             <h2>"User Profile for ID: " { user_id }</h2>
@@ -51,12 +51,12 @@ let routes = routes! {
 ```
 
 ### Reading Parameters in Page Components:
-Use `FRouter::use_param::<T>(key)` with automatic type parsing:
+Use `AppRouter::use_param::<T>(key)` with automatic type parsing:
 
 ```rust
 fn cluster_node_page() -> DomNode {
-    let cluster_id = FRouter::use_param::<u32>("cluster_id").unwrap_or(0);
-    let node_id   = FRouter::use_param::<u32>("node_id").unwrap_or(0);
+    let cluster_id = AppRouter::use_param::<u32>("cluster_id").unwrap_or(0);
+    let node_id   = AppRouter::use_param::<u32>("node_id").unwrap_or(0);
 
     view! {
         <div class="node-page">
@@ -70,22 +70,22 @@ Any type implementing `FromStr` is supported (`String`, `u32`, `i64`, etc.). Ret
 
 ### Untyped Parameters (Legacy)
 
-For raw string access, use `FRouter::params()`:
+For raw string access, use `AppRouter::params()`:
 
 ```rust
-let user_id = FRouter::params().get("id").cloned().unwrap_or_else(|| "unknown".to_string());
+let user_id = AppRouter::params().get("id").cloned().unwrap_or_else(|| "unknown".to_string());
 ```
 
 ---
 
 ## 2. Reading Query Strings (`?search=foo&page=2`)
 
-Use `FRouter::use_query::<T>(key)` to extract and parse URL query parameters:
+Use `AppRouter::use_query::<T>(key)` to extract and parse URL query parameters:
 
 ```rust
 fn search_page() -> DomNode {
-    let query = FRouter::use_query::<String>("q").unwrap_or_default();
-    let page  = FRouter::use_query::<u32>("page").unwrap_or(1);
+    let query = AppRouter::use_query::<String>("q").unwrap_or_default();
+    let page  = AppRouter::use_query::<u32>("page").unwrap_or(1);
 
     view! {
         <div>
@@ -100,10 +100,10 @@ Query parameters are URL-decoded automatically.
 
 ### Raw Query Access
 
-For the full query map, use `FRouter::query()`:
+For the full query map, use `AppRouter::query()`:
 
 ```rust
-let all_params = FRouter::query();
+let all_params = AppRouter::query();
 let sort = all_params.get("sort").cloned().unwrap_or_else(|| "relevance".into());
 ```
 
@@ -111,11 +111,11 @@ let sort = all_params.get("sort").cloned().unwrap_or_else(|| "relevance".into())
 
 ## 3. Getting the Current Path
 
-Use `FRouter::use_route()` to get the current URL path string:
+Use `AppRouter::use_route()` to get the current URL path string:
 
 ```rust
 fn breadcrumb() -> DomNode {
-    let path = FRouter::use_route();
+    let path = AppRouter::use_route();
     view! {
         <nav class="breadcrumb">
             <span>"Current route: " { path }</span>
@@ -123,3 +123,4 @@ fn breadcrumb() -> DomNode {
     }
 }
 ```
+

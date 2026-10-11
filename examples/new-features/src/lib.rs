@@ -103,7 +103,7 @@ fn macro_demo() -> DomNode {
 
 #[route("/users/:id")]
 pub fn user_profile_page() {
-    view! { <div>"User " { FRouter::param("id").unwrap_or_default() }</div> }
+    view! { <div>"User " { AppRouter::param("id").unwrap_or_default() }</div> }
 }
 
 #[route("/about")]
@@ -162,3 +162,4 @@ pub fn main() {
     };
     mount(app);
 }
+

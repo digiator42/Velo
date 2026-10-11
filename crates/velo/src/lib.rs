@@ -2862,12 +2862,12 @@ inventory::collect!(RouteRegistration);
 
 /// Gather every route registered via `#[route = "..."]` into a `Vec<Route>`,
 /// ready to hand to `<Router routes={collected_routes()} />` or
-/// `FRouter::new(...)`.
+/// `AppRouter::new(...)`.
 ///
 /// ```ignore
 /// #[route("/users/:id")]
 /// pub fn user_profile_page() {
-///     view! { <div>"User " { FRouter::param("id").unwrap_or_default() }</div> }
+///     view! { <div>"User " { AppRouter::param("id").unwrap_or_default() }</div> }
 /// }
 ///
 /// // Instead of hand-writing the Vec<Route> list:
@@ -2883,9 +2883,9 @@ pub fn collected_routes() -> Vec<Route> {
 }
 
 /// Router structural component. Listens to path changes and morphs the core view.
-pub struct FRouter;
+pub struct AppRouter;
 
-impl FRouter {
+impl AppRouter {
     pub fn new<F>(mut routes_matcher: F) -> DomNode
     where
         F: FnMut(&str) -> DomNode + 'static,
@@ -2958,6 +2958,10 @@ impl FRouter {
     }
 }
 
+/// Previous name for [`AppRouter`], kept for compatibility.
+#[deprecated(since = "0.1.0", note = "renamed to `AppRouter`")]
+pub type FRouter = AppRouter;
+
 // =============================================================================
 // Ergonomic Router component for clean macro nesting: <Router routes={...} />
 // =============================================================================
@@ -3000,13 +3004,13 @@ pub fn Router(props: RouterProps) -> DomNode {
     let outlet_c = outlet.clone();
 
     let render_count = std::cell::Cell::new(0u32);
-    // Retained by the wrapper node (see FRouter::new): disposed on unmount.
+    // Retained by the wrapper node (see AppRouter::new): disposed on unmount.
     view_wrapper.retain_effect(create_effect(move || {
         let current_path = CURRENT_PATH.with(|p| p.get());
         render_count.set(render_count.get() + 1);
 
         // 1. Match the route, staging parsed params BEFORE the leaf renders so
-        //    `FRouter::param` / `use_param` read fresh values.
+        //    `AppRouter::param` / `use_param` read fresh values.
         let mut params_payload = HashMap::new();
         let matched = routes.iter().find(|r| {
             if let Some(map) = match_route_patterns(r.path, &current_path) {
@@ -3223,7 +3227,7 @@ pub fn Link(props: LinkProps) -> DomNode {
     if let Some(active_class) = active_class {
         let to = to.to_string();
         anchor.reactive_attribute("class", move || {
-            let current = FRouter::use_route();
+            let current = AppRouter::use_route();
             if is_path_active(&current, &to) {
                 active_class.to_string()
             } else {
@@ -3308,7 +3312,7 @@ pub mod prelude {
     // Re-export router structures
     pub use crate::{
         app_layouts, boundary_fault, collected_routes, default_error_fallback, error_boundary,
-        FRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, navigate_to,
+        AppRouter, Head, HeadProps, is_path_active, LayoutFn, Link, LinkProps, navigate_to,
         register_app_layouts, Route, RouteRegistration, Router, RouterProps,
     };
 
@@ -3745,3 +3749,4 @@ pub fn shannon_entropy_bytes(bytes: &[u8]) -> f64 {
 pub fn shannon_entropy_str(s: &str) -> f64 {
     shannon_entropy_bytes(s.as_bytes())
 }
+

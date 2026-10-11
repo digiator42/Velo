@@ -66,7 +66,7 @@ pub fn page() -> DomNode {
 ```rust
 #[page]
 pub fn post() -> DomNode {
-    let slug = FRouter::param("slug").unwrap_or_default();
+    let slug = AppRouter::param("slug").unwrap_or_default();
     view! {
         <article>
             <Head title={ format!("Post: {slug}") } />
@@ -103,3 +103,4 @@ view! {
 ```
 
 This immediately updates the browser URL bar, pushes a history state, and triggers the router to mount the target page component.
+

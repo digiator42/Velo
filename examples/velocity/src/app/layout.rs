@@ -14,7 +14,7 @@ pub fn layout(child: DomNode) -> DomNode {
     let is_dark = theme.dark;
     let collapsed = theme.collapsed;
 
-    let _current = FRouter::use_route();
+    let _current = AppRouter::use_route();
 
     view! {
         <div class="app-shell" class:dark={ is_dark } class:collapsed={ collapsed }>
@@ -36,3 +36,4 @@ pub fn layout(child: DomNode) -> DomNode {
         </div>
     }
 }
+

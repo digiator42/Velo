@@ -1261,7 +1261,7 @@ pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !func.sig.inputs.is_empty() {
         return TokenStream::from(syn::Error::new_spanned(
             &func.sig.inputs,
-            "Velo: #[route] components take no arguments — read params via FRouter::use_param",
+            "Velo: #[route] components take no arguments — read params via AppRouter::use_param",
         ).to_compile_error());
     }
     func.sig.output = syn::ReturnType::Type(Default::default(), Box::new(syn::parse_quote!(velo::DomNode)));
@@ -1283,7 +1283,7 @@ pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// By convention the function is named `page` and lives at
 /// `src/app/**/page.rs`, e.g. `src/app/blog/[slug]/page.rs` ->
 /// `/blog/:slug`. Returns `velo::DomNode`; read route params with
-/// `FRouter::use_param::<T>("name")`.
+/// `AppRouter::use_param::<T>("name")`.
 #[proc_macro_attribute]
 pub fn page(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
@@ -1646,7 +1646,7 @@ fn path_helper(data: &RouteData) -> TokenStream2 {
 /// shell mounted and swaps only the leaf across sibling navigation);
 /// `not-found.rs`, `error.rs`, `loading.rs` expose zero-arg
 /// `pub fn <name>() -> velo::DomNode`. Params are read with
-/// `FRouter::use_param::<T>("slug")`.
+/// `AppRouter::use_param::<T>("slug")`.
 #[proc_macro]
 pub fn app(_input: TokenStream) -> TokenStream {
     let manifest = match std::env::var("CARGO_MANIFEST_DIR") {
@@ -1866,3 +1866,4 @@ pub fn route_path(input: TokenStream) -> TokenStream {
     let lit = syn::LitStr::new(&value, proc_macro2::Span::call_site());
     quote::quote! { #lit }.into()
 }
+

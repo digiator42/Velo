@@ -12,8 +12,8 @@ use crate::components::*;
 /// generated wrapper provides the boundary).
 #[page]
 pub fn page() -> DomNode {
-    let project_id = FRouter::use_param::<String>("id").unwrap_or_default();
-    let task_id = FRouter::use_param::<String>("taskId").unwrap_or_default();
+    let project_id = AppRouter::use_param::<String>("id").unwrap_or_default();
+    let task_id = AppRouter::use_param::<String>("taskId").unwrap_or_default();
 
     let tasks_pid = project_id.clone();
     let tasks = create_resource(move || {
@@ -60,3 +60,4 @@ pub fn page() -> DomNode {
         </div>
     }
 }
+
