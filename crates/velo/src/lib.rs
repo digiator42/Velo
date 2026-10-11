@@ -1419,6 +1419,145 @@ where
 }
 
 // =============================================================================
+// `velo::request` — chainable request builder (POST/PUT/DELETE, headers, bodies)
+// =============================================================================
+
+/// Start building a request: `velo::request(url).method("POST").json_body(&v)?.send().await?`.
+///
+/// Unlike [`fetch`] (GET-only), the builder covers methods, headers, query
+/// params, and bodies, and [`RequestBuilder::send`] turns non-2xx statuses
+/// into [`FetchError::Status`] so call sites stop hand-rolling `RequestInit`
+/// and `response.ok()` checks:
+///
+/// ```rust,ignore
+/// // What used to be ~40 lines of web-sys boilerplate:
+/// velo::request("/api/v1/threats")
+///     .method("POST")
+///     .json_body(&threat)?
+///     .send()
+///     .await?;
+/// ```
+pub fn request(url: &str) -> RequestBuilder {
+    RequestBuilder {
+        url: url.to_string(),
+        method: "GET".to_string(),
+        headers: Vec::new(),
+        body: None,
+    }
+}
+
+/// A fluent HTTP request under construction. See [`request`].
+pub struct RequestBuilder {
+    url: String,
+    method: String,
+    headers: Vec<(String, String)>,
+    body: Option<JsValue>,
+}
+
+impl RequestBuilder {
+    /// HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, …).
+    pub fn method(mut self, method: &str) -> Self {
+        self.method = method.to_string();
+        self
+    }
+
+    /// Append one request header.
+    pub fn header(mut self, name: &str, value: &str) -> Self {
+        self.headers.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    /// Append one query parameter (`?k=v` or `&k=v`, whichever fits).
+    pub fn query(mut self, key: &str, value: &str) -> Self {
+        let sep = if self.url.contains('?') { '&' } else { '?' };
+        self.url = format!("{}{}{}={}", self.url, sep, key, value);
+        self
+    }
+
+    /// Raw body (a `JsValue`, e.g. `JsValue::from_str(&text)`).
+    pub fn body(mut self, body: JsValue) -> Self {
+        self.body = Some(body);
+        self
+    }
+
+    /// JSON body: serializes `value` and sets `content-type: application/json`.
+    /// Requires the `json` feature.
+    #[cfg(feature = "json")]
+    pub fn json_body<T: serde::Serialize>(
+        mut self,
+        value: &T,
+    ) -> Result<Self, FetchError> {
+        let text =
+            serde_json::to_string(value).map_err(|e| FetchError::Decode(e.to_string()))?;
+        self.headers
+            .push(("content-type".to_string(), "application/json".to_string()));
+        self.body = Some(JsValue::from_str(&text));
+        Ok(self)
+    }
+
+    /// Send the request. Non-2xx statuses become [`FetchError::Status`].
+    pub async fn send(self) -> Result<VeloResponse, FetchError> {
+        let headers = web_sys::Headers::new().map_err(|_| {
+            FetchError::Network("Velo: could not allocate request headers".into())
+        })?;
+        for (name, value) in &self.headers {
+            headers
+                .append(name, value)
+                .map_err(|_| FetchError::Network(format!("Velo: bad header {name}")))?;
+        }
+
+        let init = web_sys::RequestInit::new();
+        init.set_method(&self.method);
+        init.set_headers(&headers);
+        if let Some(body) = &self.body {
+            init.set_body(body);
+        }
+
+        let request =
+            web_sys::Request::new_with_str_and_init(&self.url, &init).map_err(|_| {
+                FetchError::Network(format!("Velo: bad request URL {}", self.url))
+            })?;
+        // `fetch` lives on `Window` in web-sys, not on `Request`.
+        let window = web_sys::window()
+            .ok_or_else(|| FetchError::Network("Velo: No global window found".into()))?;
+        let response = wasm_bindgen_futures::JsFuture::from(
+            window.fetch_with_request(&request),
+        )
+        .await?;
+        let response: web_sys::Response = wasm_bindgen::JsCast::dyn_into(response)
+            .map_err(|_| {
+                FetchError::Decode("Velo: fetch resolved to a non-Response".into())
+            })?;
+
+        if !response.ok() {
+            return Err(FetchError::Status {
+                code: response.status(),
+                reason: response.status_text(),
+            });
+        }
+        Ok(VeloResponse::from_response(response))
+    }
+}
+
+/// POST a JSON body and decode the JSON reply — the write-side analogue of
+/// [`fetch_json`]. Requires the `json` feature.
+///
+/// ```rust,ignore
+/// let created: Rule = velo::post_json("/api/v1/firewall/rules", &input).await?;
+/// ```
+#[cfg(feature = "json")]
+pub async fn post_json<B, T>(url: &str, body: &B) -> Result<T, FetchError>
+where
+    B: serde::Serialize,
+    T: serde::de::DeserializeOwned,
+{
+    let response = request(url).method("POST").json_body(body)?.send().await?;
+    let json_promise = response.inner.json()?;
+    let json: JsValue = wasm_bindgen_futures::JsFuture::from(json_promise).await?;
+    json.into_serde().map_err(|e| FetchError::Decode(e.to_string()))
+}
+
+// =============================================================================
 // `velo::prefetch` — warm up a resource before the user navigates
 // =============================================================================
 
@@ -3316,10 +3455,10 @@ pub mod prelude {
         register_app_layouts, Route, RouteRegistration, Router, RouterProps,
     };
 
-    // Re-export the JS `fetch` sugar (fetch / response body / typed JSON)
-    pub use crate::{fetch, prefetch, FetchError, VeloResponse};
+    // Re-export the JS `fetch` sugar (fetch / request builder / typed JSON)
+    pub use crate::{fetch, prefetch, request, FetchError, RequestBuilder, VeloResponse};
     #[cfg(feature = "json")]
-    pub use crate::fetch_json;
+    pub use crate::{fetch_json, post_json};
 
     // Re-export the view! + #[component] + routes! + #[route] + app!/#[page]
     // procedural macros

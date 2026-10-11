@@ -80,6 +80,27 @@ match velo::fetch_json::<User>("/api/users/1").await {
 The variants are `Network(String)` (network/CORS), `Status { code, reason }`
 (non-2xx), and `Decode(String)` (body wasn't valid JSON for `T`).
 
+### `request()` builder + `post_json` (writes)
+
+`fetch`/`fetch_json` are GET-only. For anything else, chain the builder —
+methods, headers, query params, and bodies with no `RequestInit` boilerplate
+(`send()` turns non-2xx into `FetchError::Status` for you):
+
+```rust
+velo::request("/api/v1/threats")
+    .method("POST")
+    .json_body(&threat)?
+    .send()
+    .await?;
+```
+
+`json_body` / `post_json` need the same `json` feature as `fetch_json`.
+The one-shot write-and-decode helper:
+
+```rust
+let created: Rule = velo::post_json("/api/v1/firewall/rules", &input).await?;
+```
+
 ---
 
 ## 2. `<Link prefetch />` — on-hover route warm-up
