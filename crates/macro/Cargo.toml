@@ -2,6 +2,9 @@
 name = "velo_macro"
 version = "0.1.0"
 edition = "2021"
+description = "Procedural macros for the Veloasm reactive WASM framework (view!, components, routing)."
+license = "MIT"
+repository = "https://github.com/digiator42/Velo"
 
 [lib]
 proc-macro = true
