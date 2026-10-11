@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[allow(non_snake_case)]
 #[component]
@@ -21,3 +21,4 @@ pub fn MetricCard(
         </div>
     }
 }
+

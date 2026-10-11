@@ -1,13 +1,13 @@
 # The `DomNode` API
 
-`DomNode` is Velo's lightweight wrapper around native `web_sys::Node` instances.
+`DomNode` is veloasm's lightweight wrapper around native `web_sys::Node` instances.
 
 ---
 
 ## 1. Node Constructors
 
 ```rust
-use velo::DomNode;
+use veloasm::DomNode;
 
 // Create standard element
 let div = DomNode::element("div");
@@ -96,3 +96,4 @@ parent.release(&child);
 
 See [Effect Lifecycle & Resource Cleanup](effect-cleanup.md) for the full
 ownership model (absorption, scopes, and disposal rules).
+

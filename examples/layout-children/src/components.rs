@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A post item — deliberately **non-`Copy`**: it owns `String` fields. Passing
 /// it into components by value (`<PostCard post={ p.clone() } />`) inside a

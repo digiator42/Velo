@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 use crate::api::MockApi;
 use crate::components::*;
@@ -11,15 +11,15 @@ use crate::components::*;
 pub fn page() -> DomNode {
     // ---- Async resources (mock latency so Suspense loading states show) ----
     let projects = create_resource(|| async {
-        velo::sleep(400).await;
+        veloasm::sleep(400).await;
         MockApi::projects()
     });
     let stats = create_resource(|| async {
-        velo::sleep(500).await;
+        veloasm::sleep(500).await;
         MockApi::dashboard_stats()
     });
     let activities = create_resource(|| async {
-        velo::sleep(600).await;
+        veloasm::sleep(600).await;
         MockApi::activities()
     });
 
@@ -106,7 +106,7 @@ pub fn page() -> DomNode {
                     Some(s) => {
                         let chart_node = use_dynamic(
                             move || async move {
-                                velo::sleep(900).await;
+                                veloasm::sleep(900).await;
                                 view! { <Chart stats={ s } /> }
                             },
                             view! { <div class="chart placeholder">"Loading chart…"</div> },
@@ -130,7 +130,7 @@ pub fn page() -> DomNode {
 /// Renders the projects list with prefetch `<Link>`s (board list → board detail).
 /// Exercises `<Link prefetch>` promise sharing across navigations.
 #[component]
-fn ProjectsSection(projects: velo::Resource<Vec<crate::api::Project>>) -> DomNode {
+fn ProjectsSection(projects: veloasm::Resource<Vec<crate::api::Project>>) -> DomNode {
     view! {
         <section class="projects-section">
             <h2>"Your Projects"</h2>
@@ -152,7 +152,7 @@ fn ProjectsSection(projects: velo::Resource<Vec<crate::api::Project>>) -> DomNod
 
 /// Renders the activity feed once the activities resource resolves.
 #[component]
-fn ActivitySection(activities: velo::Resource<Vec<crate::api::Activity>>) -> DomNode {
+fn ActivitySection(activities: veloasm::Resource<Vec<crate::api::Activity>>) -> DomNode {
     view! {
         <div>
             <h2>"Recent Activity"</h2>
@@ -160,7 +160,7 @@ fn ActivitySection(activities: velo::Resource<Vec<crate::api::Activity>>) -> Dom
                 let a = activities.value();
                 match a {
                     Some(list) if !list.is_empty() => {
-                        let list_sv = velo::signal_vec(list);
+                        let list_sv = veloasm::signal_vec(list);
                         view! { <ActivityFeed activities={ list_sv } /> }
                     }
                     _ => view! { <p class="subtitle">"No activity yet."</p> },
@@ -169,3 +169,4 @@ fn ActivitySection(activities: velo::Resource<Vec<crate::api::Activity>>) -> Dom
         </div>
     }
 }
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::*;
 
 // =============================================================================
@@ -98,7 +98,7 @@ fn macro_demo() -> DomNode {
 //
 // Note: rustc does not support the key-value form `#[route = "..."]` for
 // proc-macro attributes, so the macro accepts the parenthesized spelling
-// `#[route("/path")]`. `route` is re-exported by `velo::prelude::*` above.
+// `#[route("/path")]`. `route` is re-exported by `veloasm::prelude::*` above.
 // =============================================================================
 
 #[route("/users/:id")]
@@ -162,4 +162,5 @@ pub fn main() {
     };
     mount(app);
 }
+
 

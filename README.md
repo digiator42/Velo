@@ -1,4 +1,4 @@
-# Velo
+# veloasm
 
 High-performance, client-side, fine-grained reactive SPA framework for Rust → WebAssembly.
 No Virtual DOM — state changes update the real DOM surgically.
@@ -12,9 +12,9 @@ No Virtual DOM — state changes update the real DOM surgically.
 ## Quickstart
 
 ```sh
-velo new my-app
+veloasm new my-app
 cd examples/my-app
-velo dev
+veloasm dev
 # open http://localhost:8080
 ```
 
@@ -27,7 +27,7 @@ trunk serve --open examples/counter-spa/index.html
 ## Quick example
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 fn app() -> DomNode {
     let count = signal!(0);
@@ -116,7 +116,7 @@ Write handles / plain values work unchanged.
 Uppercase tags are components. Pass a `ReadSignal<T>` prop to keep the child reactive.
 
 ```rust
-#[velo::component]
+#[veloasm::component]
 fn UserCard(name: String, active: bool) {
     view! {
         <li class:active={ active } class="card">
@@ -259,7 +259,7 @@ struct Theme { dark: false }
 
 provide!(Theme { dark: false });   // in the root
 
-#[velo::component]
+#[veloasm::component]
 fn ThemeBadge() {
     let theme: Option<Theme> = context!();
     view! { <div>{ theme.map(|t| t.dark) }</div> }
@@ -270,7 +270,7 @@ fn ThemeBadge() {
 
 ## Routing
 
-### File-based routing (`velo::app!`)
+### File-based routing (`veloasm::app!`)
 
 The recommended approach. Drop files in `src/app/` and the macro generates the route table at compile time:
 
@@ -286,8 +286,8 @@ src/app/
 ```
 
 ```rust
-use velo::prelude::*;
-velo::app!();
+use veloasm::prelude::*;
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -298,7 +298,7 @@ pub fn main() {
                 <Link to={ paths::blog_slug("hello") } label="Hello post" />
             </nav>
             <main>
-                <Router routes={ velo_app::routes() } />
+                <Router routes={ veloasm_app::routes() } />
             </main>
         </div>
     };
@@ -345,9 +345,11 @@ Sets `document.title` + `<meta>` tags on each navigation. Stale tags from the pr
 
 - `crates/velo` — the unified runtime: reactivity, DOM, router, fetch, error overlay.
 - `crates/macro` — proc macros: `view!`, `#[component]`, `routes!`, `#[route]`, `app!`, `route_path!`.
-- `crates/velo-cli` — `velo new` / `velo dev` / `velo build` (wraps Trunk).
+- `crates/velo-cli` — `veloasm new` / `veloasm dev` / `veloasm build` (wraps Trunk).
 - `examples/` — runnable apps (counter-spa, blog, async-dashboard, features-demo, typed-nav, dynamic, …), plus real-world submodules: `luxshield` (XDP network shield console) and `cyberflow` (live threat console). Clone with `git clone --recurse-submodules`.
 
 ## Status
 
-All roadmap pillars (5.P0–5.P11) are complete: zero-clone reactivity, file-based routing, Suspense/error boundaries, typed navigation, dev error overlay, `class_names!`, `use_dynamic`, and the `velo` CLI. The framework compiles to `wasm32-unknown-unknown`.
+All roadmap pillars (5.P0–5.P11) are complete: zero-clone reactivity, file-based routing, Suspense/error boundaries, typed navigation, dev error overlay, `class_names!`, `use_dynamic`, and the `veloasm` CLI. The framework compiles to `wasm32-unknown-unknown`.
+
+

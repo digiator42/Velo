@@ -21,10 +21,10 @@
 //! `route_path!("/nope")`) and rebuild — the build fails with the list of
 //! available routes.
 
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -34,8 +34,9 @@ pub fn main() {
 pub fn run_app() {
     let shell = view! {
         <div id="app">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);
 }
+

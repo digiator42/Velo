@@ -2,9 +2,9 @@
 
 ---
 
-## 1. The `velo::fetch` API
+## 1. The `veloasm::fetch` API
 
-Velo provides three helpers in `velo::prelude::*` that wrap `window.fetch` with a
+veloasm provides three helpers in `veloasm::prelude::*` that wrap `window.fetch` with a
 JS-style ergonomics feel:
 
 | Function | Returns | Purpose |
@@ -14,14 +14,14 @@ JS-style ergonomics feel:
 | `prefetch(url)` | `()` | Fire-and-forget background warm-up (used by `<Link prefetch />`) |
 
 Both `fetch` and `fetch_json` are `async` and can be `.await`ed directly inside a
-Velo `async () => {}` handler, or wrapped in `create_resource`.
+veloasm `async () => {}` handler, or wrapped in `create_resource`.
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 // Raw fetch: inspect status, then read the body.
 on:click={ async () => {
-    let resp = velo::fetch("/api/health").await.unwrap();
+    let resp = veloasm::fetch("/api/health").await.unwrap();
     if resp.ok() {
         log!("up: {}", resp.status()); // 200
     }
@@ -44,13 +44,13 @@ resp.json().await      // Result<JsValue, JsValue> — the raw parsed JSON value
 
 ### `fetch_json<T>` (typed)
 
-For typed JSON you need Velo's optional **`json` feature** (default **off** to keep
+For typed JSON you need veloasm's optional **`json` feature** (default **off** to keep
 the WASM core small). Enable it in your crate:
 
 ```toml
 # Cargo.toml
 [dependencies]
-velo = { path = "../../crates/velo", features = ["json"] }
+veloasm = { path = "../../crates/velo", features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 ```
 
@@ -62,7 +62,7 @@ of `await (await fetch(url)).json()`:
 struct User { name: String, age: u8 }
 
 let resource = create_resource(|| async {
-    velo::fetch_json::<User>("/api/users/1").await.unwrap()
+    veloasm::fetch_json::<User>("/api/users/1").await.unwrap()
 });
 ```
 
@@ -71,7 +71,7 @@ let resource = create_resource(|| async {
 `fetch_json` returns a `FetchError` instead of a bare `JsValue`, so you can pattern-match:
 
 ```rust
-match velo::fetch_json::<User>("/api/users/1").await {
+match veloasm::fetch_json::<User>("/api/users/1").await {
     Ok(user)         => /* render */,
     Err(e)           => log!("{e}"),
 }
@@ -87,7 +87,7 @@ methods, headers, query params, and bodies with no `RequestInit` boilerplate
 (`send()` turns non-2xx into `FetchError::Status` for you):
 
 ```rust
-velo::request("/api/v1/threats")
+veloasm::request("/api/v1/threats")
     .method("POST")
     .json_body(&threat)?
     .send()
@@ -98,7 +98,7 @@ velo::request("/api/v1/threats")
 The one-shot write-and-decode helper:
 
 ```rust
-let created: Rule = velo::post_json("/api/v1/firewall/rules", &input).await?;
+let created: Rule = veloasm::post_json("/api/v1/firewall/rules", &input).await?;
 ```
 
 ---
@@ -108,7 +108,7 @@ let created: Rule = velo::post_json("/api/v1/firewall/rules", &input).await?;
 Passing the `prefetch` boolean prop to a `<Link>` pre-warms the destination's
 payload **without** navigating:
 
-- On `mouseenter` and `focus`, Velo issues a low-priority background `fetch(to)`.
+- On `mouseenter` and `focus`, veloasm issues a low-priority background `fetch(to)`.
 - The result is **discarded** — it just lands in the browser's HTTP cache.
 - When the user later clicks through and the page calls `fetch_json` (or `fetch`)
   on the same URL, the data resolves **instantly** from cache.
@@ -131,7 +131,7 @@ hover/focus, so the fetch that follows navigation is a cache hit.
 Because prefetch is fire-and-forget and never blocks, an unpredicted visit just
 falls back to the normal (uncached) fetch path — it never hurts.
 
-> **Future hook point.** `velo::prefetch` is where Velo will also warm up the
+> **Future hook point.** `veloasm::prefetch` is where veloasm will also warm up the
 > destination's per-`.wasm` chunk once real code-splitting lands. Today it warms
 > only the raw payload.
 
@@ -147,7 +147,7 @@ a `<Link prefetch />` in the nav plus a `/users` page that decodes a JSON API wi
 #[route("/users")]
 pub fn users_page() -> DomNode {
     let resource = create_resource(|| async move {
-        velo::fetch_json::<Vec<User>>(USERS_URL).await
+        veloasm::fetch_json::<Vec<User>>(USERS_URL).await
     });
     let loading = resource.clone();
     let value = resource.clone();
@@ -168,3 +168,4 @@ pub fn users_page() -> DomNode {
 Run it with `trunk serve` in the example directory and watch the DevTools Network
 tab: hovering the "Users" link fires an early request, so the page's fetch is a
 cache hit.
+

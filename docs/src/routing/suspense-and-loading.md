@@ -1,6 +1,6 @@
 # Suspense & Loading States
 
-Velo provides two complementary loading mechanisms: per-route `loading.rs`
+veloasm provides two complementary loading mechanisms: per-route `loading.rs`
 placeholders (emitted automatically by `app!`) and the on-demand `<Suspense>`
 component for async data inside a page.
 
@@ -13,16 +13,16 @@ Drop a `loading.rs` into a segment directory and mark its function with
 
 ```rust
 // src/app/loading.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[loading]
 pub fn loading() -> DomNode {
-    view! { <div class="velo-loading">"Loading route…"</div> }
+    view! { <div class="veloasm-loading">"Loading route…"</div> }
 }
 ```
 
 `app!` shows this placeholder whenever a navigation to that segment is in
-progress, driven by Velo's internal `route_loading()` signal. When the route
+progress, driven by veloasm's internal `route_loading()` signal. When the route
 finishes mounting, the placeholder swaps to the real content on the next
 microtask.
 
@@ -41,7 +41,7 @@ the tree in `<Suspense>` so a fallback shows while the data resolves:
 #[page]
 pub fn page() -> DomNode {
     let resource = create_resource(|| async {
-        velo::sleep(600).await;
+        veloasm::sleep(600).await;
         42u32
     });
 
@@ -83,7 +83,7 @@ asynchronously and resolves to heavy content:
 ```rust
 <Suspense loading={ r.loading() } fallback={ <p>"Loading…"</p> }>
     { use_dynamic(|| async {
-        velo::sleep(400).await;
+        veloasm::sleep(400).await;
         view! { <Chart data={ data } /> }
     }) }
 </Suspense>

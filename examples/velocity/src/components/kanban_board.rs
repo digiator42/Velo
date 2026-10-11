@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 use crate::components::*;
 
@@ -8,8 +8,8 @@ use crate::components::*;
 /// reactively, so search/status/toasts flow through one reactive source.
 #[component]
 pub fn KanbanBoard(
-    columns: velo::SignalVec<crate::api::Column>,
-    grouped: velo::Memo<Vec<(crate::api::Column, Vec<crate::api::Task>)>>,
+    columns: veloasm::SignalVec<crate::api::Column>,
+    grouped: veloasm::Memo<Vec<(crate::api::Column, Vec<crate::api::Task>)>>,
     on_task_open: Rc<dyn Fn(String)>,
 ) -> DomNode {
     let on_open = on_task_open.clone();
@@ -24,3 +24,4 @@ pub fn KanbanBoard(
         </div>
     }
 }
+

@@ -7,7 +7,7 @@ A multi-page task management application featuring client-side routing, keyed re
 ## 1. Application Models & Context
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[derive(Clone)]
 pub struct Task {
@@ -62,7 +62,7 @@ is annotated `#[page]`. The macro builds the route table and a typed
 
 ```rust
 // src/app/tasks/page.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -106,14 +106,14 @@ pub fn page() -> DomNode {
 }
 ```
 
-The app root wires everything together with `velo::app!()` and a `<Router>`:
+The app root wires everything together with `veloasm::app!()` and a `<Router>`:
 
 ```rust
 // src/lib.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() { run_app(); }
@@ -121,7 +121,7 @@ pub fn main() { run_app(); }
 pub fn run_app() {
     let shell = view! {
         <div id="app">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);
@@ -131,3 +131,4 @@ pub fn run_app() {
 > The real `examples/todo-app` predates file routing and uses a manual
 > `Vec<Route>` table. Both styles work; the `app!`/`#[page]` form is the
 > recommended one and is shown here.
+

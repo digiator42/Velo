@@ -19,12 +19,12 @@
 //! src/app/posts/[slug]/page.rs -> "/posts/:slug" (leaf-only swap)
 //! ```
 
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod components;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -34,7 +34,7 @@ pub fn main() {
 pub fn run_app() {
     let shell = view! {
         <div id="app-container">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);

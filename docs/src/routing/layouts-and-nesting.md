@@ -1,7 +1,7 @@
 # Layouts & Nesting
 
 A **layout** is a `#[layout]` function that wraps a set of routes, providing a
-persistent shell (header, nav, footer). In Velo the layout **shell is mounted
+persistent shell (header, nav, footer). In veloasm the layout **shell is mounted
 once** and survives navigation — only the routed leaf inside it swaps.
 
 ---
@@ -14,7 +14,7 @@ single `child: DomNode` argument (the routed page) and returns the wrapped
 
 ```rust
 // src/app/layout.rs — root layout wrapping every page
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[layout]
 pub fn layout(child: DomNode) -> DomNode {
@@ -80,7 +80,7 @@ pub fn layout(child: DomNode) -> DomNode {
 }
 ```
 
-Navigate between `/posts` and `/posts/hello-velo` — the shell (and `clicks`) is
+Navigate between `/posts` and `/posts/hello-veloasm` — the shell (and `clicks`) is
 **not** re-created. The router swaps only the leaf inside `<main>`, leaving the
 layout subtree and its local signals intact.
 

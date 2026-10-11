@@ -1,4 +1,4 @@
-//! Server-Sent Events client (`velo::sse::connect`).
+//! Server-Sent Events client (`veloasm::sse::connect`).
 //!
 //! Thin wrapper over [`web_sys::EventSource`]: auto-reconnects natively,
 //! routes `data` payloads (string or JSON) into a Rust callback, and closes
@@ -82,3 +82,4 @@ pub fn on_open(conn: &SseConnection, mut f: impl FnMut() + 'static) -> OpenHandl
 pub struct OpenHandle {
     _cb: Rc<RefCell<Option<Closure<dyn FnMut()>>>>,
 }
+

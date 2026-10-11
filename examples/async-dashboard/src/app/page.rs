@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Dashboard at `/`: a delayed fake "fetch" feeds `<Suspense>`, which shows a
 /// fallback while loading and swaps in the resolved value when the resource
@@ -8,7 +8,7 @@ use velo::prelude::*;
 pub fn page() -> DomNode {
     let resource = create_resource(|| async {
         // Simulate a network fetch that resolves after ~600ms.
-        velo::sleep(600).await;
+        veloasm::sleep(600).await;
         42u32
     });
 
@@ -27,3 +27,4 @@ pub fn page() -> DomNode {
         </div>
     }
 }
+

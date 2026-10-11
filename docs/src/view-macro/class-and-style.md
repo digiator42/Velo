@@ -1,6 +1,6 @@
 # Class & Style Toggles
 
-Velo provides special attribute prefixes (`class:` and `style:`) for fine-grained styling and class list manipulations without string concatenation.
+veloasm provides special attribute prefixes (`class:` and `style:`) for fine-grained styling and class list manipulations without string concatenation.
 
 ---
 
@@ -99,3 +99,4 @@ view! {
 
 > Tip: prefer `class:name={ signal }` for a single on/off toggle driven by one
 > boolean, and `class_names!` when several conditions combine into one class list.
+

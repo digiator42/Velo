@@ -1,13 +1,13 @@
 # Example: High-Frequency Live Dashboard
 
-Demonstrates Velo's non-blocking, fine-grained architecture under high-frequency background streaming without Virtual DOM bottlenecks.
+Demonstrates veloasm's non-blocking, fine-grained architecture under high-frequency background streaming without Virtual DOM bottlenecks.
 
 ---
 
 ## 1. High-Frequency Metrics Component
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[allow(non_snake_case)]
 #[component]
@@ -29,7 +29,7 @@ pub fn MetricCard(title: String, value: RwSignal<i32>, unit: String) {
 ## 2. Background Stream Loop & Smooth Thread Prover
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 use gloo_timers::callback::Interval;
 
 use super::components::MetricCard;   // or inline below
@@ -71,15 +71,16 @@ pub fn page() -> DomNode {
 The app root wires the page in with `app!` + `<Router>`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() { run_app(); }
 
 pub fn run_app() {
-    mount(view! { <div id="app"><Router routes={ velo_app::routes() } /></div> });
+    mount(view! { <div id="app"><Router routes={ veloasm_app::routes() } /></div> });
 }
 ```
+

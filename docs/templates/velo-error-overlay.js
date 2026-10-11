@@ -1,7 +1,7 @@
 /*!
- * Velo dev error overlay — REFERENCE COPY (kept human-readable).
+ * veloasm dev error overlay — REFERENCE COPY (kept human-readable).
  *
- * The canonical version ships BUILT-IN and is compiled into the `velo` crate
+ * The canonical version ships BUILT-IN and is compiled into the `veloasm` crate
  * as the `DEV_OVERLAY_JS` constant (see crates/velo/src/lib.rs,
  * `install_dev_overlay()`), installed automatically by `mount()` — so new
  * projects need NO copy-paste, no script tag, and no asset wiring.
@@ -13,7 +13,7 @@
  * Drop this single <script> into your index.html to use the stand-alone copy
  * under `trunk serve --watch`:
  *
- *     <script src="velo-error-overlay.js"></script>
+ *     <script src="veloasm-error-overlay.js"></script>
  *
  * How it works
  * ------------
@@ -29,7 +29,7 @@
  * The full Rust diagnostic with its `--> file.rs:line:col` span is printed to
  * the `trunk serve` terminal, not streamed to the page — so the panel points
  * you there, and only shows `file:line:col` when it happens to appear in the
- * message. (Velo's own error boundaries catch runtime faults in-app; this
+ * message. (veloasm's own error boundaries catch runtime faults in-app; this
  * overlay is strictly for dev-time compile failures.)
  *
  * This script is deliberately inert when the app is NOT served by Trunk in
@@ -40,7 +40,7 @@
  * style fingerprint so only this panel shows.
  *
  * copy into any example that `trunk serve`s: keep the exact sync + a matching
- * `<link data-trunk rel="copy-file" href="velo-error-overlay.js"/>` directive
+ * `<link data-trunk rel="copy-file" href="veloasm-error-overlay.js"/>` directive
  * in index.html so it lands in dist/.
  */
 (() => {
@@ -61,7 +61,7 @@
 
   const buildPanel = () => {
     const root = document.createElement("div");
-    root.id = "velo-dev-overlay";
+    root.id = "veloasm-dev-overlay";
     root.setAttribute(
       "style",
       [
@@ -140,7 +140,7 @@
     close.addEventListener("mouseleave", () => (close.style.color = "#94a3b8"));
 
     const loc = document.createElement("div");
-    loc.id = "velo-dev-overlay-loc";
+    loc.id = "veloasm-dev-overlay-loc";
     loc.setAttribute(
       "style",
       [
@@ -156,7 +156,7 @@
     );
 
     const msg = document.createElement("pre");
-    msg.id = "velo-dev-overlay-msg";
+    msg.id = "veloasm-dev-overlay-msg";
     msg.setAttribute(
       "style",
       [
@@ -179,7 +179,7 @@
       ].join(";"),
     );
     foot.textContent =
-      "Velo dev overlay \u00b7 trunk serve --watch \u00b7 the full diagnostic with `--> file.rs:line:col` is in the trunk server terminal; save the fix and the page reloads automatically.";
+      "veloasm dev overlay \u00b7 trunk serve --watch \u00b7 the full diagnostic with `--> file.rs:line:col` is in the trunk server terminal; save the fix and the page reloads automatically.";
 
     head.append(icon, title, close);
     card.append(head, loc, msg, foot);
@@ -212,10 +212,10 @@
   };
 
   const showFailure = ({ reason }) => {
-    console.error("Velo dev overlay: build failed\n" + reason);
+    console.error("veloasm dev overlay: build failed\n" + reason);
     if (!panel) panel = buildPanel();
-    const loc = document.getElementById("velo-dev-overlay-loc");
-    const msg = document.getElementById("velo-dev-overlay-msg");
+    const loc = document.getElementById("veloasm-dev-overlay-loc");
+    const msg = document.getElementById("veloasm-dev-overlay-msg");
     if (loc) {
       const at = locationOf(reason);
       loc.style.display = at ? "inline-block" : "none";
@@ -264,3 +264,4 @@
     /* never let the overlay take down the app */
   }
 })();
+

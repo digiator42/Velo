@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A deliberately "heavy" chart subtree that is lazy-loaded via `use_dynamic`
 /// on the dashboard. Rendering it simulates a chunk fetch with a short delay,
@@ -14,3 +14,4 @@ pub fn Chart(stats: crate::api::DashboardStats) -> DomNode {
         </div>
     }
 }
+

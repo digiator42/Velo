@@ -16,7 +16,7 @@ src/app/
 
 ```rust
 // src/app/users/[id]/page.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -29,16 +29,16 @@ pub fn page() -> DomNode {
 }
 ```
 
-The macro also emits a typed `paths::users_id(id)` builder in `velo_app::paths`,
+The macro also emits a typed `paths::users_id(id)` builder in `veloasm_app::paths`,
 so you can link to the route with a runtime value:
 
 ```rust
-use velo::prelude::*;
-// assumes: velo::app!() in src/lib.rs and src/app/users/[id]/page.rs
-<Link to={ velo_app::paths::users_id("42") } label="User 42" />
+use veloasm::prelude::*;
+// assumes: veloasm::app!() in src/lib.rs and src/app/users/[id]/page.rs
+<Link to={ veloasm_app::paths::users_id("42") } label="User 42" />
 ```
 
-(In `src/lib.rs` after `use velo::prelude::*`, `velo_app` is in scope, so this
+(In `src/lib.rs` after `use veloasm::prelude::*`, `veloasm_app` is in scope, so this
 is usually written `paths::users_id("42")`.)
 
 For a manual `routes!`/`Vec<Route>` table the same `:id` param applies:
@@ -123,4 +123,5 @@ fn breadcrumb() -> DomNode {
     }
 }
 ```
+
 

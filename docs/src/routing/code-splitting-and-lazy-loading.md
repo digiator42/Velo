@@ -1,11 +1,11 @@
 # Lazy Loading & Code Splitting
 
-Velo keeps the initial WASM bundle small by loading heavy sections on demand.
+veloasm keeps the initial WASM bundle small by loading heavy sections on demand.
 The primitive for this is **`use_dynamic`** — the client-side analogue of
 Next.js `next/dynamic` / React `lazy`. A placeholder shows immediately, then the
 real subtree swaps in once an async loader resolves.
 
-> **Scope note:** Velo delivers code-splitting through the `use_dynamic`
+> **Scope note:** veloasm delivers code-splitting through the `use_dynamic`
 > **primitive** rather than automatic per-`.wasm`-file splitting. Real
 > `--split-linked-modules` route chunking is a future enhancement; `use_dynamic`
 > is the stable hook point your app can build on today.
@@ -15,12 +15,12 @@ real subtree swaps in once an async loader resolves.
 ## 1. `use_dynamic(loader, fallback)`
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 fn heavy_chart() -> DomNode {
     use_dynamic(
         || async {
-            velo::sleep(1200).await;                  // "fetch the heavy data / module"
+            veloasm::sleep(1200).await;                  // "fetch the heavy data / module"
             view! { <div class="chart"><h2>"Heavy chart"</h2></div> }
         },
         view! { <div class="chart placeholder">"Loading heavy chart…"</div> },

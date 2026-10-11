@@ -9,7 +9,7 @@ Static text is written as quoted string literals:
 
 ```rust
 view! {
-    <h1>"Welcome to Velo"</h1>
+    <h1>"Welcome to veloasm"</h1>
 }
 ```
 
@@ -57,3 +57,4 @@ Any type implementing the `RenderDynamic` trait can be rendered directly inside 
 * `bool`
 * `DomNode`
 * `Vec<DomNode>`
+

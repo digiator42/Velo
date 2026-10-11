@@ -1,13 +1,13 @@
 # Defining Components with `#[component]`
 
-Components in Velo are pure Rust functions annotated with the `#[component]` attribute macro.
+Components in veloasm are pure Rust functions annotated with the `#[component]` attribute macro.
 
 ---
 
 ## 1. Writing a Component
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[component]
 pub fn UserCard(name: String, role: String) {
@@ -21,7 +21,7 @@ pub fn UserCard(name: String, role: String) {
 ```
 
 ### What `#[component]` Does:
-* Rewrites the function signature to return `velo::DomNode`.
+* Rewrites the function signature to return `veloasm::DomNode`.
 * Allows the function body to end directly with a `view! { ... }` tail expression without needing an explicit `return` statement.
 * **Auto-generates a `<Name>Props` struct** with one `pub` field per parameter, rewrites the
   function to take that struct as a single `props` argument, and destructures it back into the
@@ -51,3 +51,4 @@ view! {
 
 Note the second `UserCard` writes `role` before `name` — the order does not matter, because props
 are matched to the `UserCardProps` fields by name.
+

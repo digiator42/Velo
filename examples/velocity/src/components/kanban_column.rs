@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 use crate::components::*;
 
@@ -9,7 +9,7 @@ use crate::components::*;
 #[component]
 pub fn KanbanColumn(
     column: crate::api::Column,
-    grouped: velo::Memo<Vec<(crate::api::Column, Vec<crate::api::Task>)>>,
+    grouped: veloasm::Memo<Vec<(crate::api::Column, Vec<crate::api::Task>)>>,
     on_task_open: Rc<dyn Fn(String)>,
 ) -> DomNode {
     let col_id = column.id.clone();
@@ -40,3 +40,4 @@ pub fn KanbanColumn(
         </div>
     }
 }
+

@@ -9,7 +9,7 @@ Effects run arbitrary side effects whenever their tracked reactive dependencies 
 Use `create_effect(closure)`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let theme = signal!("dark".to_string());
 
@@ -45,7 +45,7 @@ around freely.
 // App setup (no scope open): retained for the app lifetime.
 effect!(move || analytics.track(route.get()));
 
-// Inside a #[component] / keyed row / velo::scope: adopted by the owner and
+// Inside a #[component] / keyed row / veloasm::scope: adopted by the owner and
 // disposed when that owner's node is torn down.
 effect!(move || render_log(tail.get()));
 ```
@@ -76,3 +76,4 @@ let handle = create_effect_with_cleanup(
 ```
 
 The cleanup callback runs automatically when the effect is disposed (or when the owning `DomNode` is unmounted).
+

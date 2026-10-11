@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Persistent shell for the dashboard. The `clicks` counter's signal is
 /// created when the shell first mounts; navigating routes must NOT reset it
@@ -9,7 +9,7 @@ pub fn layout(child: DomNode) -> DomNode {
     view! {
         <div class="dash-shell">
             <header>
-                <span class="brand">"Velo Async Dashboard"</span>
+                <span class="brand">"veloasm Async Dashboard"</span>
                 <button on:click={ move |_| clicks.set(clicks.get() + 1) }>
                     "shell clicks: " { clicks }
                 </button>

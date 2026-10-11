@@ -62,7 +62,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "arrow-closures"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -71,7 +71,7 @@ dependencies = [
 name = "async-dashboard"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -80,7 +80,7 @@ dependencies = [
 name = "blog"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -158,7 +158,7 @@ name = "counter-spa"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -167,7 +167,7 @@ dependencies = [
 name = "dynamic"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -176,7 +176,7 @@ dependencies = [
 name = "error-overlay"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -186,7 +186,7 @@ name = "features-demo"
 version = "0.1.0"
 dependencies = [
  "gloo-timers 0.3.0",
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -301,7 +301,7 @@ dependencies = [
 name = "layout-children"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -322,7 +322,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "memo-unwrap-check"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
 ]
 
@@ -331,7 +331,7 @@ name = "new-features"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "velo",
+ "veloasm",
  "wasm-bindgen",
 ]
 
@@ -365,7 +365,7 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "serde",
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -448,7 +448,7 @@ name = "server-monitor-dashboard"
 version = "0.1.0"
 dependencies = [
  "gloo-timers 0.4.0",
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -491,7 +491,7 @@ dependencies = [
 name = "todo-app"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -500,7 +500,7 @@ dependencies = [
 name = "typed-nav"
 version = "0.1.0"
 dependencies = [
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -529,7 +529,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "velo"
+name = "velo_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "veloasm"
 version = "0.1.0"
 dependencies = [
  "inventory",
@@ -544,20 +553,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "velo-cli"
+name = "veloasm-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
-]
-
-[[package]]
-name = "velo_macro"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -568,7 +568,7 @@ dependencies = [
  "js-sys",
  "serde",
  "uuid",
- "velo",
+ "veloasm",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

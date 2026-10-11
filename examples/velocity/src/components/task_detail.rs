@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 use crate::components::*;
 
@@ -32,3 +32,4 @@ pub fn TaskDetail(task: crate::api::Task, project_id: String, on_close: Rc<dyn F
         </div>
     }
 }
+

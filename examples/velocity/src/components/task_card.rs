@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use crate::components::*;
 use std::rc::Rc;
 
@@ -23,3 +23,4 @@ pub fn TaskCard(task: crate::api::Task, on_open: Rc<dyn Fn(String)>) -> DomNode 
         </div>
     }
 }
+

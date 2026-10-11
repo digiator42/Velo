@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A single activity row. Takes owned `String` props so the keyed `for` body
 /// can pass **eager** clones (rather than `{ ... }` text slots that would
@@ -19,7 +19,7 @@ pub fn ActivityItem(user: String, action: String, target: String) -> DomNode {
 /// The recent-activity feed. Consumes a `SignalVec<Activity>` so appending
 /// activities live-updates the list via the keyed `for` reconciler.
 #[component]
-pub fn ActivityFeed(activities: velo::SignalVec<crate::api::Activity>) -> DomNode {
+pub fn ActivityFeed(activities: veloasm::SignalVec<crate::api::Activity>) -> DomNode {
     view! {
         <div class="activity-feed">
             {
@@ -33,3 +33,4 @@ pub fn ActivityFeed(activities: velo::SignalVec<crate::api::Activity>) -> DomNod
         </div>
     }
 }
+

@@ -1,6 +1,6 @@
 # Conditional Rendering & Control Flow
 
-In Velo, dynamic branches are written using standard Rust `if / else` expressions and `match` statements inside `{ ... }`.
+In veloasm, dynamic branches are written using standard Rust `if / else` expressions and `match` statements inside `{ ... }`.
 
 ---
 
@@ -81,3 +81,4 @@ view! {
     </div>
 }
 ```
+

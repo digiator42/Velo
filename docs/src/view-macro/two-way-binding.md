@@ -1,6 +1,6 @@
 # Two-Way Form Bindings (`bind:`)
 
-Velo provides native two-way binding sugar via `bind:value` and `bind:checked` to eliminate `web_sys` event parsing boilerplate.
+veloasm provides native two-way binding sugar via `bind:value` and `bind:checked` to eliminate `web_sys` event parsing boilerplate.
 
 ---
 
@@ -9,7 +9,7 @@ Velo provides native two-way binding sugar via `bind:value` and `bind:checked` t
 Bind any `RwSignal<String>` or `WriteSignal<String>` directly to an `<input>`, `<textarea>`, or `<select>`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[component]
 fn SearchBox() {
@@ -57,3 +57,4 @@ fn ToggleAgreement() {
 
 * Listens to the `change` event on the checkbox and sets the boolean signal.
 * Automatically reflects programmatic updates to the checkbox in the UI.
+

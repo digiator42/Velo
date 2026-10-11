@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Root layout — a persistent shell around every route.
 ///
@@ -13,7 +13,7 @@ pub fn layout(child: DomNode) -> DomNode {
     view! {
         <div class="blog-shell">
             <header>
-                <span class="brand">"Velo Blog"</span>
+                <span class="brand">"veloasm Blog"</span>
                 <button class="layout-count" on:click={ move |_| clicks.set(clicks.get() + 1) }>
                     "layout count: " { clicks }
                 </button>

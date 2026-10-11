@@ -1,6 +1,6 @@
 # Signals
 
-Signals are the primary atomic unit of reactive state in Velo.
+Signals are the primary atomic unit of reactive state in veloasm.
 
 ---
 
@@ -10,7 +10,7 @@ Use `signal!(initial_value)` to create a reactive value with a single combined
 read+write handle (`RwSignal<T>`):
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let count = signal!(0);
 ```
@@ -79,3 +79,4 @@ let on_click = move |_| {
 
 The same holds for `ReadSignal<T>`, `WriteSignal<T>`, and `Memo<T>`. Only
 `SignalVec<T>` (and your own data) still needs `.clone()` per closure.
+

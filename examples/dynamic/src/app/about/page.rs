@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -10,3 +10,4 @@ pub fn page() -> DomNode {
         </div>
     }
 }
+

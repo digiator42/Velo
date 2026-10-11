@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A single post at `/blog/:slug`.
 ///
@@ -17,3 +17,4 @@ pub fn page() -> DomNode {
         </article>
     }
 }
+

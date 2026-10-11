@@ -1,6 +1,6 @@
 # Reactive Attributes
 
-Element attributes in Velo can be static string constants or live reactive expressions.
+Element attributes in veloasm can be static string constants or live reactive expressions.
 
 ---
 
@@ -47,3 +47,4 @@ view! {
 
 * When `is_submitting` is `true`, `disabled=""` is set on the DOM element.
 * When `is_submitting` is `false`, the `disabled` attribute is removed completely.
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::*;
 
 /// Registers global keyboard shortcuts via `effect!` with a cleanup.
@@ -41,3 +41,4 @@ pub fn KeyboardShortcuts() -> DomNode {
         </div>
     }
 }
+

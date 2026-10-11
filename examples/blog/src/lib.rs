@@ -1,4 +1,4 @@
-//! `examples/blog` — exercises the file-based `velo::app!` router (§4 of the
+//! `examples/blog` — exercises the file-based `veloasm::app!` router (§4 of the
 //! roadmap): a nested `/blog/[slug]` route, typed `paths` helpers feeding
 //! `<Link to={ .. }>`, a root layout, and a global not-found page.
 //!
@@ -11,10 +11,10 @@
 //! src/app/not-found.rs       -> "**"
 //! ```
 
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -24,7 +24,7 @@ pub fn main() {
 pub fn run_app() {
     let shell = view! {
         <div id="app-container">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);

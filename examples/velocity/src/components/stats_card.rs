@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// One of the summary "stat cards" on the dashboard. The value is a reactive
 /// expression so it re-renders when its underlying signal/memo changes.
@@ -11,3 +11,4 @@ pub fn StatsCard(label: &'static str, value: i64) -> DomNode {
         </div>
     }
 }
+

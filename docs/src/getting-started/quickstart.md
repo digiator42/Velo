@@ -1,18 +1,18 @@
 # Quickstart Guide
 
-Build your first interactive Velo SPA in under 5 minutes using the recommended
+Build your first interactive veloasm SPA in under 5 minutes using the recommended
 file-based `src/app/` workflow.
 
 ---
 
 ## 1. Scaffold the Project
 
-Create `Cargo.toml` linking the `velo` crate (plus `wasm-bindgen` for the entry
+Create `Cargo.toml` linking the `veloasm` crate (plus `wasm-bindgen` for the entry
 point):
 
 ```toml
 [package]
-name = "my-velo-app"
+name = "my-veloasm-app"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,7 +20,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-velo = { path = "../../crates/velo" }
+veloasm = { path = "../../crates/velo" }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = [] }
 ```
@@ -33,7 +33,7 @@ And an `index.html` entry shell (Trunk uses this as the build source of truth):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My First Velo App</title>
+    <title>My First veloasm App</title>
     <style>
         body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
         .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; max-width: 400px; }
@@ -52,16 +52,16 @@ And an `index.html` entry shell (Trunk uses this as the build source of truth):
 
 ## 2. Write the Application
 
-Create the app root at `src/lib.rs` and one page at `src/app/page.rs`. Velo's
+Create the app root at `src/lib.rs` and one page at `src/app/page.rs`. veloasm's
 `app!` macro reads `src/app/` at compile time and turns each `page.rs` into a
 route, generating the `<Router>` wiring for you:
 
 ```rust
 // src/lib.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();                     // scan src/app/ + build routes
+veloasm::app!();                     // scan src/app/ + build routes
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -71,7 +71,7 @@ pub fn main() {
 pub fn run_app() {
     let shell = view! {
         <div id="app">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);
@@ -80,7 +80,7 @@ pub fn run_app() {
 
 ```rust
 // src/app/page.rs — the "/" home page
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -90,7 +90,7 @@ pub fn page() -> DomNode {
     // 2. Build the DOM structure with the view! macro
     view! {
         <div class="card">
-            <h1>"Velo Quickstart"</h1>
+            <h1>"veloasm Quickstart"</h1>
             <p>"Current count: " <strong>{ count }</strong></p>
             <button on:click={ move |_| count.set(count.get() + 1) }>
                 "Increment"
@@ -112,7 +112,7 @@ trunk serve --watch
 
 Trunk compiles your Rust to WebAssembly, serves `index.html` at
 `http://127.0.0.1:8080`, opens your browser, and **auto-reloads on every save**.
-Velo's built-in dev error overlay shows a full Rust diagnostic (`file:line:col`)
+veloasm's built-in dev error overlay shows a full Rust diagnostic (`file:line:col`)
 right on the page when the build fails. See
 [Dev Server, Error Overlay & HMR](dev-server-and-hmr.md) for the full loop.
 
@@ -123,7 +123,7 @@ right on the page when the build fails. See
 Add `src/app/about/page.rs`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -131,13 +131,13 @@ pub fn page() -> DomNode {
 }
 ```
 
-`app!` automatically generates a typed helper in `velo_app::paths`, so you can
+`app!` automatically generates a typed helper in `veloasm_app::paths`, so you can
 link to it with compile-time checking (`route_path!` is a typo-proof path
 literal; `paths::*` are path *builders*). More in
 [Typed Navigation](../routing/overview.md#3-typed-navigation-route_path--compile-checked-to).
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 // inside a #[page] or #[layout] view:
 <Link to={ route_path!("/about") } label="About" />
@@ -152,3 +152,5 @@ use velo::prelude::*;
 * On click, `count.set(...)` notifies subscribers.
 * Only the inner text node containing the count changes in the real browser
   DOM — the header, card, and button stay untouched.
+
+

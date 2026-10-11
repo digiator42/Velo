@@ -7,7 +7,7 @@
 ## 1. Creating a `SignalVec`
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[derive(Clone)]
 struct TodoItem {
@@ -31,7 +31,7 @@ let items = signal_vec(vec![
 
 ```rust
 // Push a new item
-items.push(TodoItem { id: 3, title: "Ship Velo app".into(), done: false });
+items.push(TodoItem { id: 3, title: "Ship veloasm app".into(), done: false });
 
 // Remove item at index
 let removed = items.remove(0);
@@ -81,7 +81,7 @@ where unbounded growth would otherwise leak memory and slow reconciliation.
 
 ## 5. Keyed Rendering
 
-Combine `SignalVec` with Velo's keyed `for` loop in the `view!` macro to reconcile DOM nodes by stable key:
+Combine `SignalVec` with veloasm's keyed `for` loop in the `view!` macro to reconcile DOM nodes by stable key:
 
 ```rust
 view! {
@@ -95,3 +95,4 @@ view! {
 }
 ```
 Inserting or removing items only updates the affected DOM nodes without tearing down existing elements.
+

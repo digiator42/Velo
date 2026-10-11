@@ -9,7 +9,7 @@ Memos are cached computed signals that only re-evaluate when their tracked depen
 Use `create_memo` or the terse factory `memo`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let count = signal!(2);
 
@@ -78,3 +78,4 @@ view! {
 The recomputation effect is owned by the enclosing scope when the memo is
 created inside one (torn down with its owner), and retained for the app
 lifetime otherwise — the same rule as [`effect!`](effects.md).
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::components::{AppState, Task, TaskRow, TaskRowProps};
@@ -9,7 +9,7 @@ fn home_page() -> DomNode {
     view! {
         <div class="page">
             <h1>"Task Manager"</h1>
-            <p>"A small Velo application exercising routing, reactive lists, derived state, context, and the #[component] macro."</p>
+            <p>"A small veloasm application exercising routing, reactive lists, derived state, context, and the #[component] macro."</p>
             <p>"Use the nav above to switch between Tasks and Stats."</p>
         </div>
     }
@@ -126,7 +126,7 @@ pub fn run_app() {
     // Share the task list across all pages via context.
     provide_context(AppState {
         tasks: signal_vec(vec![
-            Task { id: 1, title: "Learn Velo's reactivity".into(), done: false },
+            Task { id: 1, title: "Learn veloasm's reactivity".into(), done: false },
             Task { id: 2, title: "Build a SPA".into(), done: true },
         ]),
     });
@@ -141,7 +141,7 @@ pub fn run_app() {
     let app_shell = view! {
         <div id="app-container">
             <nav>
-                <span class="brand">"Velo"</span>
+                <span class="brand">"veloasm"</span>
                 <Link to="/" label="Home" />
                 <Link to="/tasks" label="Tasks" />
                 <Link to="/stats" label="Stats" />
@@ -152,3 +152,4 @@ pub fn run_app() {
 
     mount(app_shell);
 }
+

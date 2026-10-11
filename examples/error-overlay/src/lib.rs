@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen(start)]
@@ -15,3 +15,4 @@ pub fn main() {
     };
     mount(shell);
 }
+

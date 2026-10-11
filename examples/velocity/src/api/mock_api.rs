@@ -306,5 +306,6 @@ impl MockApi {
 /// Simulate network latency for the mock API. Used by `create_resource` callers
 /// to make loading states visible (and to give prefetch a window to win the race).
 pub async fn mock_delay_ms(ms: u32) {
-    velo::sleep(ms).await;
+    veloasm::sleep(ms).await;
 }
+

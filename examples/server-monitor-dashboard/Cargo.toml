@@ -7,7 +7,9 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-velo = { path = "../../crates/velo" }
+veloasm = { path = "../../crates/velo" }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }
 gloo-timers = "0.4"
+
+

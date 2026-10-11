@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// `/settings` — theme + profile controls. Reads the `ThemeState` and
 /// `AuthState` from context, toggles dark mode with a `class:` binding, and
@@ -38,3 +38,4 @@ pub fn page() -> DomNode {
         </div>
     }
 }
+

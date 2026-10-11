@@ -23,7 +23,7 @@ pub struct ThemeContext {
 Call `provide_context(value)` at the root or parent level:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 pub fn run_app() {
     // Seed global context
@@ -75,3 +75,4 @@ let sub_tree = with_context(
     }
 );
 ```
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// An async-loader helper that "fetches" a whole subtree, exposing the
 /// `use_dynamic` swap-in behavior with a visible loading placeholder.
@@ -6,7 +6,7 @@ fn heavy_chart() -> DomNode {
     // Loading placeholder shows first; the resolved subtree swaps in ~500ms.
     use_dynamic(
         || async {
-            velo::sleep(1200).await;
+            veloasm::sleep(1200).await;
             view! {
                 <div class="chart">
                     <h2>"Heavy chart (lazy-loaded)"</h2>
@@ -29,3 +29,4 @@ pub fn page() -> DomNode {
         </div>
     }
 }
+

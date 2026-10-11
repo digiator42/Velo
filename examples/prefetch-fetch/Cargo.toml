@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-velo = { path = "../../crates/velo", features = ["json"] }
+veloasm = { path = "../../crates/velo", features = ["json"] }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }
 console_error_panic_hook = "0.1"
@@ -15,3 +15,4 @@ console_error_panic_hook = "0.1"
 [dependencies.serde]
 workspace = true
 features = ["derive"]
+

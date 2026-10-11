@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A single to-do item. Held inside a `SignalVec<Task>` so list mutations are
 /// reactive and get reconciled by stable `id`.
@@ -41,3 +41,4 @@ pub fn TaskRow(task: Task) {
         </div>
     }
 }
+

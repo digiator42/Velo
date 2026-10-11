@@ -126,7 +126,7 @@ fn reactive_value(v: &syn::Expr) -> proc_macro2::TokenStream {
     if matches!(v, syn::Expr::Closure(_)) {
         quote! { (#v)() }
     } else {
-        quote! { velo::signal_value!(#v) }
+        quote! { veloasm::signal_value!(#v) }
     }
 }
 
@@ -207,7 +207,7 @@ impl Parse for VNode {
                     } else {
                         return Err(syn::Error::new(
                             ident.span(),
-                            "Velo: unexpected token after `in <expr>` in for-loop (expected `key =` or `{`)",
+                            "veloasm: unexpected token after `in <expr>` in for-loop (expected `key =` or `{`)",
                         ));
                     }
                 } else {
@@ -393,7 +393,7 @@ impl Parse for VNode {
             return Err(syn::Error::new(
                 end_tag.span(),
                 format!(
-                    "Velo Macro Error: Expected matching closing tag </{}>",
+                    "veloasm Macro Error: Expected matching closing tag </{}>",
                     tag_name
                 ),
             ));
@@ -414,19 +414,19 @@ impl ToTokens for VNode {
         match self {
             VNode::StaticText(txt) => {
                 tokens.extend(quote! {
-                    velo::DomNode::text(#txt)
+                    veloasm::DomNode::text(#txt)
                 });
             }
             VNode::ReactiveExpression(expr) => {
                 match expr {
                     Expr::Closure(_) => {
                         tokens.extend(quote! {
-                            velo::DomNode::render_expression(#expr)
+                            veloasm::DomNode::render_expression(#expr)
                         });
                     }
                     _ => {
                         tokens.extend(quote! {
-                            velo::DomNode::render_expression(move || velo::signal_value!(#expr))
+                            veloasm::DomNode::render_expression(move || veloasm::signal_value!(#expr))
                         });
                     }
                 }
@@ -445,7 +445,7 @@ impl ToTokens for VNode {
                     // Keyed, fine-grained list: uses SignalVec + the DOM reconciler.
                     tokens.extend(quote! {
                         {
-                            let loop_fragment = velo::DomNode::element("div");
+                            let loop_fragment = veloasm::DomNode::element("div");
                             loop_fragment.set_attr("class", "contents");
 
                             let list = (#expr).clone();
@@ -453,7 +453,7 @@ impl ToTokens for VNode {
                             loop_fragment.render_signal_vec(
                                 &list,
                                 key_fn,
-                                move |#pat| -> velo::DomNode {
+                                move |#pat| -> veloasm::DomNode {
                                     #(#compiled_body_nodes)*
                                 }
                             );
@@ -463,7 +463,7 @@ impl ToTokens for VNode {
                 } else {
                     tokens.extend(quote! {
                         {
-                            let loop_fragment = velo::DomNode::fragment();
+                            let loop_fragment = veloasm::DomNode::fragment();
 
                             for #pat in #expr {
                                 #(
@@ -482,7 +482,7 @@ impl ToTokens for VNode {
 
                 tokens.extend(quote! {
                     {
-                        let fragment_node = velo::DomNode::fragment();
+                        let fragment_node = veloasm::DomNode::fragment();
                         #(
                             fragment_node.append(&#compiled_children);
                         )*
@@ -518,7 +518,7 @@ impl ToTokens for VNode {
                     // fragment, swapping live when the condition flips.
                     if component_name == "Show" || component_name == "Suspense" {
                         let mut when_expr: Option<&syn::Expr> = None;
-                        let mut fallback_val = quote! { velo::DomNode::text("") };
+                        let mut fallback_val = quote! { veloasm::DomNode::text("") };
                         for attr in attributes {
                             if attr.key == "when" || attr.key == "loading" {
                                 when_expr = Some(&attr.value);
@@ -529,7 +529,7 @@ impl ToTokens for VNode {
                         }
                         let content_block = quote! {
                             {
-                                let __velo_cf_frag = velo::DomNode::fragment();
+                                let __velo_cf_frag = veloasm::DomNode::fragment();
                                 #( __velo_cf_frag.append(&#children); )*
                                 __velo_cf_frag
                             }
@@ -572,7 +572,7 @@ impl ToTokens for VNode {
                             }
                         };
                         tokens.extend(quote! {
-                            velo::reactive_switch(
+                            veloasm::reactive_switch(
                                 #predicate,
                                 #content_block,
                                 #fallback_val,
@@ -650,7 +650,7 @@ impl ToTokens for VNode {
                             quote! { Some(vec![#(#children),*]) }
                         };
                         tokens.extend(quote! {
-                            velo::Link(velo::LinkProps {
+                            veloasm::Link(veloasm::LinkProps {
                                 to: #to_val,
                                 label: #label_val,
                                 active_class: #class_val,
@@ -693,7 +693,7 @@ impl ToTokens for VNode {
                             quote! { None }
                         };
                         tokens.extend(quote! {
-                            velo::Head(velo::HeadProps {
+                            veloasm::Head(veloasm::HeadProps {
                                 title: #title_final,
                                 meta: #meta_final,
                             })
@@ -740,7 +740,7 @@ impl ToTokens for VNode {
                     let mut setup_statements = Vec::new();
 
                     setup_statements.push(quote! {
-                        let parent_node = velo::DomNode::element(#tag_name);
+                        let parent_node = veloasm::DomNode::element(#tag_name);
                     });
 
                     // Collect every class-related attribute so we can coordinate them
@@ -815,7 +815,7 @@ impl ToTokens for VNode {
                                     let bind_sig_1 = bind_sig_1.clone();
                                     parent_node.reactive_attribute(#field_name, move || {
                                         use wasm_bindgen::JsCast;
-                                        let v = velo::signal_value!(bind_sig_1);
+                                        let v = veloasm::signal_value!(bind_sig_1);
                                         let s = format!("{}", v);
                                         // Also set live DOM property for correct IME/reset behavior
                                         if let Ok(el) = bind_node.clone().dyn_into::<web_sys::HtmlInputElement>() {
@@ -856,7 +856,7 @@ impl ToTokens for VNode {
                                     let bind_sig_1 = bind_sig_1.clone();
                                     parent_node.reactive_attribute("checked", move || {
                                         use wasm_bindgen::JsCast;
-                                        let checked = velo::signal_value!(bind_sig_1);
+                                        let checked = veloasm::signal_value!(bind_sig_1);
                                         // `reactive_attribute` requires `FnMut() -> String`,
                                         // so materialise an owned String (not `&str`).
                                         let s: String = if checked { "checked".into() } else { "".into() };
@@ -902,7 +902,7 @@ impl ToTokens for VNode {
                             } else {
                                 setup_statements.push(quote! {
                                     let p_node = parent_node.raw_node.clone();
-                                    parent_node.retain_effect(velo::create_effect({
+                                    parent_node.retain_effect(veloasm::create_effect({
                                         let val_sig = move || #val;
                                         move || {
                                             use wasm_bindgen::JsCast;
@@ -1069,16 +1069,16 @@ pub fn view(input: TokenStream) -> TokenStream {
     TokenStream::from(parsed_root.to_token_stream())
 }
 
-/// `#[component]` turns a plain function into a Velo component and converts it
+/// `#[component]` turns a plain function into a veloasm component and converts it
 /// to the named-props form.
 ///
-/// Velo components are callable with **named props** in any order. The macro
+/// veloasm components are callable with **named props** in any order. The macro
 /// rewrites the function so that:
 ///
 /// 1. A `<Name>Props` struct is generated with one `pub` field per parameter.
 /// 2. The function now takes that struct as a single `props` argument and
 ///    destructures it into the original parameter names.
-/// 3. The return type is rewritten to `velo::DomNode` so the body can end with
+/// 3. The return type is rewritten to `veloasm::DomNode` so the body can end with
 ///    a `view! { ... }` tail expression (no explicit `-> DomNode` needed).
 ///
 /// The `view!` macro matches JSX attributes to the struct fields by name, so
@@ -1087,7 +1087,7 @@ pub fn view(input: TokenStream) -> TokenStream {
 /// `<Panel>{..}</Panel>` composition.
 ///
 /// ```ignore
-/// #[velo::component]
+/// #[veloasm::component]
 /// fn UserCard(name: String, active: bool) {
 ///     view! {
 ///         <div class:active={ active }>
@@ -1107,7 +1107,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
         return TokenStream::from(
             syn::Error::new_spanned(
                 &func.sig.ident,
-                "Velo #[component] no longer takes a props-type argument: the <Name>Props struct is generated automatically from the parameter list",
+                "veloasm #[component] no longer takes a props-type argument: the <Name>Props struct is generated automatically from the parameter list",
             )
             .to_compile_error(),
         );
@@ -1123,7 +1123,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(_) => {
                 return TokenStream::from(
-                    syn::Error::new_spanned(input, "Velo #[component] cannot take a `self` receiver")
+                    syn::Error::new_spanned(input, "veloasm #[component] cannot take a `self` receiver")
                         .to_compile_error(),
                 );
             }
@@ -1134,7 +1134,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return TokenStream::from(
                     syn::Error::new_spanned(
                         arg,
-                        "Velo #[component] parameters must be plain named identifiers",
+                        "veloasm #[component] parameters must be plain named identifiers",
                     )
                     .to_compile_error(),
                 );
@@ -1163,7 +1163,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
         .inputs
         .push(syn::parse_quote! { props: #props_ident });
 
-    // Wrap the whole body in `velo::scoped_node`: every effect created while
+    // Wrap the whole body in `veloasm::scoped_node`: every effect created while
     // the component builds (`effect!`, helper bindings, nested components'
     // leftovers) is adopted by the scope and attached to the returned node,
     // so tearing the node down disposes them instead of leaking for the app
@@ -1171,7 +1171,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     // the scope always closes.
     let existing_stmts = std::mem::take(&mut func.block.stmts);
     let wrapped: syn::Expr = syn::parse_quote! {
-        velo::scoped_node(move || {
+        veloasm::scoped_node(move || {
             #destructure
             #(#existing_stmts)*
         })
@@ -1181,7 +1181,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Force the return type to DomNode.
     func.sig.output = syn::ReturnType::Type(
         Default::default(),
-        Box::new(syn::parse_quote!(velo::DomNode)),
+        Box::new(syn::parse_quote!(veloasm::DomNode)),
     );
 
     // Components are conventionally PascalCase (e.g. `UserCard`), so suppress
@@ -1209,7 +1209,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
             let path_lit = path;
             let comp = component;
             quote! {
-                velo::Route {
+                veloasm::Route {
                     path: #path_lit,
                     component: #comp,
                 }
@@ -1261,28 +1261,28 @@ pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !func.sig.inputs.is_empty() {
         return TokenStream::from(syn::Error::new_spanned(
             &func.sig.inputs,
-            "Velo: #[route] components take no arguments — read params via AppRouter::use_param",
+            "veloasm: #[route] components take no arguments — read params via AppRouter::use_param",
         ).to_compile_error());
     }
-    func.sig.output = syn::ReturnType::Type(Default::default(), Box::new(syn::parse_quote!(velo::DomNode)));
+    func.sig.output = syn::ReturnType::Type(Default::default(), Box::new(syn::parse_quote!(veloasm::DomNode)));
     let fn_ident = func.sig.ident.clone();
     TokenStream::from(quote! {
         #func
-        velo::inventory::submit! {
-            velo::RouteRegistration { path: #path_lit, component: #fn_ident }
+        veloasm::inventory::submit! {
+            veloasm::RouteRegistration { path: #path_lit, component: #fn_ident }
         }
     })
 }
 
 // =============================================================================
-// §4 — File-based `app/` routing: `velo::app!` + `#[page]` / `#[layout]`
+// §4 — File-based `app/` routing: `veloasm::app!` + `#[page]` / `#[layout]`
 // =============================================================================
 
 /// Marker for an application **page** function.
 ///
 /// By convention the function is named `page` and lives at
 /// `src/app/**/page.rs`, e.g. `src/app/blog/[slug]/page.rs` ->
-/// `/blog/:slug`. Returns `velo::DomNode`; read route params with
+/// `/blog/:slug`. Returns `veloasm::DomNode`; read route params with
 /// `AppRouter::use_param::<T>("name")`.
 #[proc_macro_attribute]
 pub fn page(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -1309,7 +1309,7 @@ pub fn not_found(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Marker for a segment **error** boundary at `src/app/**/error.rs`.
 /// By convention: `fn error() -> DomNode`. `app!` wraps every page below the
-/// nearest `error.rs` in an error boundary (see `velo::error_boundary`).
+/// nearest `error.rs` in an error boundary (see `veloasm::error_boundary`).
 #[proc_macro_attribute]
 pub fn error(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
@@ -1317,7 +1317,7 @@ pub fn error(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Marker for a segment **loading** placeholder at `src/app/**/loading.rs`.
 /// By convention: `fn loading() -> DomNode`. `app!` shows it as a Suspense
-/// fallback while the route is mounting (`velo::route_loading()`).
+/// fallback while the route is mounting (`veloasm::route_loading()`).
 #[proc_macro_attribute]
 pub fn loading(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
@@ -1620,13 +1620,13 @@ fn path_helper(data: &RouteData) -> TokenStream2 {
     }
 }
 
-/// `velo::app!()` — Next.js-style file-based routing.
+/// `veloasm::app!()` — Next.js-style file-based routing.
 ///
 /// Reads the crate's `src/app/` directory at compile time and expands to a
-/// `pub mod velo_app { .. }` containing:
+/// `pub mod veloasm_app { .. }` containing:
 ///   - one nested `mod` per `.rs` file (via `include!`),
 ///   - a typed `paths` module of compile-checked route path helpers,
-///   - `pub fn routes() -> Vec<velo::Route>` to hand to `<Router />`.
+///   - `pub fn routes() -> Vec<veloasm::Route>` to hand to `<Router />`.
 ///
 /// Conventions:
 /// ```text
@@ -1640,12 +1640,12 @@ fn path_helper(data: &RouteData) -> TokenStream2 {
 ///   src/app/blog/loading.rs      -> nearest loading placeholder
 /// ```
 ///
-/// Page files expose `pub fn page() -> velo::DomNode`; layout files expose
-/// `pub fn layout(child: velo::DomNode) -> velo::DomNode` (they wrap the
+/// Page files expose `pub fn page() -> veloasm::DomNode`; layout files expose
+/// `pub fn layout(child: veloasm::DomNode) -> veloasm::DomNode` (they wrap the
 /// matched leaf — the chain is *registered* with the Router, which keeps the
 /// shell mounted and swaps only the leaf across sibling navigation);
 /// `not-found.rs`, `error.rs`, `loading.rs` expose zero-arg
-/// `pub fn <name>() -> velo::DomNode`. Params are read with
+/// `pub fn <name>() -> veloasm::DomNode`. Params are read with
 /// `AppRouter::use_param::<T>("slug")`.
 #[proc_macro]
 pub fn app(_input: TokenStream) -> TokenStream {
@@ -1654,7 +1654,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
         Err(_) => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "velo::app!: CARGO_MANIFEST_DIR is unavailable",
+                "veloasm::app!: CARGO_MANIFEST_DIR is unavailable",
             )
             .to_compile_error()
             .into();
@@ -1664,7 +1664,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
     if !src_app.is_dir() {
         return syn::Error::new(
             proc_macro2::Span::call_site(),
-            "velo::app! requires an `src/app/` directory at the crate root (Next.js-style)",
+            "veloasm::app! requires an `src/app/` directory at the crate root (Next.js-style)",
         )
         .to_compile_error()
         .into();
@@ -1675,7 +1675,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
     if pages.is_empty() {
         return syn::Error::new(
             proc_macro2::Span::call_site(),
-            "velo::app!: no `page.rs` files found under `src/app/`",
+            "veloasm::app!: no `page.rs` files found under `src/app/`",
         )
         .to_compile_error()
         .into();
@@ -1683,7 +1683,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
 
     // One compiled module per `src/app/` file. The included files reference the
     // typed `paths` helpers (e.g. `paths::blog_slug("x")`); `paths` lives in
-    // `velo_app`, one level above every page module, so import it via `super`.
+    // `veloasm_app`, one level above every page module, so import it via `super`.
     let mod_items = files.iter().map(|f| {
         let name = module_ident(&f.rel);
         let rel_lit = syn::LitStr::new(&f.rel, proc_macro2::Span::call_site());
@@ -1717,7 +1717,7 @@ pub fn app(_input: TokenStream) -> TokenStream {
             .iter()
             .map(|l| {
                 let lm = module_ident(l);
-                quote! { #lm::layout as velo::LayoutFn }
+                quote! { #lm::layout as veloasm::LayoutFn }
             })
             .collect();
         layout_entries.push(quote! {
@@ -1732,28 +1732,28 @@ pub fn app(_input: TokenStream) -> TokenStream {
                 let em = module_ident(&er);
                 quote! { #em::error() }
             }
-            None => quote! { velo::default_error_fallback() },
+            None => quote! { veloasm::default_error_fallback() },
         };
         let loading_fallback = match find_segment_file(&page.rel, &files, "loading.rs") {
             Some(lr) => {
                 let lm = module_ident(&lr);
                 quote! {
-                    velo::reactive_switch(move || !velo::route_loading(), __content, #lm::loading())
+                    veloasm::reactive_switch(move || !veloasm::route_loading(), __content, #lm::loading())
                 }
             }
             None => quote! { __content },
         };
 
         wrappers.push(quote! {
-            fn #render_name() -> velo::DomNode {
+            fn #render_name() -> veloasm::DomNode {
                 let __content =
-                    velo::error_boundary(#error_fallback, Box::new(move || #leaf::page()));
+                    veloasm::error_boundary(#error_fallback, Box::new(move || #leaf::page()));
                 #loading_fallback
             }
         });
 
         route_entries.push(quote! {
-            velo::Route { path: #path_lit, component: #render_name }
+            veloasm::Route { path: #path_lit, component: #render_name }
         });
         path_items.push(path_helper(&data));
     }
@@ -1767,34 +1767,34 @@ pub fn app(_input: TokenStream) -> TokenStream {
             .iter()
             .map(|l| {
                 let lm = module_ident(l);
-                quote! { #lm::layout as velo::LayoutFn }
+                quote! { #lm::layout as veloasm::LayoutFn }
             })
             .collect();
         layout_entries.push(quote! {
             ("/**", &[#(#layout_fns),*])
         });
         wrappers.push(quote! {
-            fn #render_name() -> velo::DomNode {
-                velo::error_boundary(
-                    velo::default_error_fallback(),
+            fn #render_name() -> veloasm::DomNode {
+                veloasm::error_boundary(
+                    veloasm::default_error_fallback(),
                     Box::new(move || #leaf::not_found()),
                 )
             }
         });
         route_entries.push(quote! {
-            velo::Route { path: "/**", component: #render_name }
+            veloasm::Route { path: "/**", component: #render_name }
         });
     }
 
     let expanded = quote! {
-        pub mod velo_app {
+        pub mod veloasm_app {
             #(#mod_items)*
             pub mod paths {
                 #(#path_items)*
             }
             #(#wrappers)*
-            pub fn routes() -> Vec<velo::Route> {
-                velo::register_app_layouts(&[
+            pub fn routes() -> Vec<veloasm::Route> {
+                veloasm::register_app_layouts(&[
                     #(#layout_entries),*
                 ]);
                 vec![
@@ -1866,4 +1866,5 @@ pub fn route_path(input: TokenStream) -> TokenStream {
     let lit = syn::LitStr::new(&value, proc_macro2::Span::call_site());
     quote::quote! { #lit }.into()
 }
+
 

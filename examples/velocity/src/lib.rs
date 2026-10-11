@@ -1,6 +1,6 @@
 //! `examples/velocity` — a Trello/Linear-lite project management dashboard.
 //!
-//! One codebase exercising every Velo feature:
+//! One codebase exercising every veloasm feature:
 //!
 //! - `signal!`, `memo!`, `effect!` — live search, filtered counts, theme toggle
 //! - `signal_vec!` + keyed `for` — boards/columns/tasks, reconciled by key
@@ -22,10 +22,10 @@
 //! Mock data: a `MockApi` module (no server) with simulated latency so prefetch
 //! promise sharing is visible in the Network tab.
 
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 mod api;
 mod components;
@@ -71,7 +71,8 @@ pub fn run_app() {
     });
 
     let shell = view! {
-        <Router routes={ velo_app::routes() } />
+        <Router routes={ veloasm_app::routes() } />
     };
     mount(shell);
 }
+

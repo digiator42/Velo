@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 
 use crate::api::{Column, MockApi, Priority, Status, Task};
@@ -19,7 +19,7 @@ pub fn page() -> DomNode {
     let project = create_resource(move || {
         let pid = pid1.clone();
         async move {
-            velo::sleep(300).await;
+            veloasm::sleep(300).await;
             MockApi::project(&pid)
         }
     });
@@ -27,7 +27,7 @@ pub fn page() -> DomNode {
     let cols_raw = create_resource(move || {
         let pid = pid2.clone();
         async move {
-            velo::sleep(400).await;
+            veloasm::sleep(400).await;
             MockApi::columns(&pid)
         }
     });
@@ -35,7 +35,7 @@ pub fn page() -> DomNode {
     let tasks_raw = create_resource(move || {
         let pid = pid3.clone();
         async move {
-            velo::sleep(500).await;
+            veloasm::sleep(500).await;
             MockApi::tasks(&pid)
         }
     });
@@ -93,7 +93,7 @@ pub fn page() -> DomNode {
     // inside the Router's render effect and leak a subscription into it,
     // causing the Router to re-render (and rebuild the whole page) whenever the
     // memo changes — an infinite loop.
-    let columns = velo::signal_vec(Vec::new());
+    let columns = veloasm::signal_vec(Vec::new());
     let sync_cols = columns.clone();
     let grouped_c = grouped.clone();
     effect!(move || {
@@ -126,7 +126,7 @@ pub fn page() -> DomNode {
     let on_task_open = {
         let pid = project_id.clone();
         Rc::new(move |tid: String| {
-            velo::navigate_to(&paths::board_task_id_taskid(&pid, &tid));
+            veloasm::navigate_to(&paths::board_task_id_taskid(&pid, &tid));
         }) as Rc<dyn Fn(String)>
     };
 
@@ -184,4 +184,5 @@ pub fn page() -> DomNode {
 fn columns_from(groups: &[(Column, Vec<Task>)]) -> Vec<Column> {
     groups.iter().map(|(c, _)| c.clone()).collect()
 }
+
 

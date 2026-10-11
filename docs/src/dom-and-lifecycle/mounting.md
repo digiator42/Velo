@@ -1,6 +1,6 @@
 # Mounting the Application
 
-Mounting connects your root Velo `DomNode` hierarchy to the browser's live HTML DOM tree. The modern mounting API returns a `RootHandle` so you can tear the app down explicitly.
+Mounting connects your root veloasm `DomNode` hierarchy to the browser's live HTML DOM tree. The modern mounting API returns a `RootHandle` so you can tear the app down explicitly.
 
 ---
 
@@ -9,15 +9,15 @@ Mounting connects your root Velo `DomNode` hierarchy to the browser's live HTML 
 The most common entry point. Appends your app's root to `<body>` and returns a `RootHandle`:
 
 ```rust
-use velo::prelude::*;
-use velo::mount;
+use veloasm::prelude::*;
+use veloasm::mount;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn main() {
     let app_root = view! {
         <div class="app-root">
-            <h1>"My Velo Application"</h1>
+            <h1>"My veloasm Application"</h1>
         </div>
     };
 
@@ -37,8 +37,8 @@ There is **no wrapper element** — the root `DomNode` is appended as a child of
 Use this when you want to mount into a specific existing element (e.g. `<div id="app">`):
 
 ```rust
-use velo::prelude::*;
-use velo::mount_at;
+use veloasm::prelude::*;
+use veloasm::mount_at;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -48,9 +48,9 @@ pub fn main() {
         .document()
         .unwrap()
         .get_element_by_id("app")
-        .expect("Velo: <div id=\"app\"> not found");
+        .expect("veloasm: <div id=\"app\"> not found");
 
-    let app_root = view! { <h1>"Hello, Velo!"</h1> };
+    let app_root = view! { <h1>"Hello, veloasm!"</h1> };
     let _handle = mount_at(&container, app_root);
 }
 ```
@@ -85,11 +85,12 @@ mount_to_id("app", app_root);
 
 ## 5. Accessing the Global Document (`document()`)
 
-Velo exports a `document()` helper that returns a typed `web_sys::Document` instance:
+veloasm exports a `document()` helper that returns a typed `web_sys::Document` instance:
 
 ```rust
-use velo::document;
+use veloasm::document;
 
 let title = document().title();
 document().set_title("New App Title");
 ```
+

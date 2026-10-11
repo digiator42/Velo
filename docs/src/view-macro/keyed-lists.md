@@ -9,7 +9,7 @@ When rendering collections of items, fine-grained list reconciliation ensures th
 Use `{ for item in collection key = |item| key_expr { ... } }`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[derive(Clone)]
 struct User {
@@ -40,7 +40,7 @@ view! {
 
 ## 2. Why Keys Matter
 
-1. **Reconciliation by Identity**: Velo compares the keys before and after a mutation. Items with existing keys are preserved and re-ordered in the DOM without re-creating nodes.
+1. **Reconciliation by Identity**: veloasm compares the keys before and after a mutation. Items with existing keys are preserved and re-ordered in the DOM without re-creating nodes.
 2. **Performance**: Only newly added keys create new DOM nodes; removed keys have their corresponding nodes detached and disposed.
 3. **Closure Requirement**: The item render closure implements `Clone`, allowing it to capture shared state handles when rendering child components.
 
@@ -63,3 +63,4 @@ view! {
     </ol>
 }
 ```
+

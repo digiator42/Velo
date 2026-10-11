@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// The 404 fallback. `app!` registers `not-found.rs` as the `/**` catch-all.
 #[not_found]
@@ -12,3 +12,4 @@ pub fn not_found() -> DomNode {
         </div>
     }
 }
+

@@ -1,4 +1,4 @@
-# Velo workspace tasks
+# veloasm workspace tasks
 #
 # Default budget for the counter-spa gzipped wasm (kB). Keep DX additions
 # from silently bloating the shipped binary — raise only deliberately.

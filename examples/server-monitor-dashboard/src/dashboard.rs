@@ -1,5 +1,5 @@
 use crate::components::{MetricCard, MetricCardProps};
-use velo::prelude::*;
+use veloasm::prelude::*;
 use web_sys::js_sys;
 
 pub fn monitor_page() -> DomNode {
@@ -60,7 +60,7 @@ pub fn monitor_page() -> DomNode {
     view! {
         <div class="page monitor">
             <h1>"Live Clusters Performance Metrics"</h1>
-            <p>"Demonstrating Velo's non-blocking, fine-grained asynchronous architecture."</p>
+            <p>"Demonstrating veloasm's non-blocking, fine-grained asynchronous architecture."</p>
 
             <div class="chaos-controls">
                 <div class="interactive-zone">
@@ -102,3 +102,4 @@ pub fn monitor_page() -> DomNode {
         </div>
     }
 }
+

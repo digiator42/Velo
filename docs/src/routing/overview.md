@@ -1,6 +1,6 @@
 # Client-Side Routing Overview
 
-Velo includes a built-in client-side router (part of the unified `velo` crate: `Router`, `Route`, `Link`, `AppRouter`) designed specifically for Single Page Applications running in WebAssembly.
+veloasm includes a built-in client-side router (part of the unified `veloasm` crate: `Router`, `Route`, `Link`, `AppRouter`) designed specifically for Single Page Applications running in WebAssembly.
 
 ---
 
@@ -14,19 +14,19 @@ Velo includes a built-in client-side router (part of the unified `velo` crate: `
 
 ## 2. Lazy-Loading Heavy Sections (`use_dynamic`)
 
-`use_dynamic(loader, fallback)` is Velo's async lazy-loader primitive — the client-side analogue of
+`use_dynamic(loader, fallback)` is veloasm's async lazy-loader primitive — the client-side analogue of
 Next.js `next/dynamic` / React `lazy`. It shows the `fallback` (a loading placeholder) immediately,
 then **swaps in** the real node once the async `loader` future resolves. This is the hook point for
 route-based code splitting (5.P8): a heavy route section loads on demand instead of blocking first
 paint.
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 fn heavy_chart() -> DomNode {
     use_dynamic(
         || async {
-            velo::sleep(300).await;          // e.g. fetch a chunk / data
+            veloasm::sleep(300).await;          // e.g. fetch a chunk / data
             view! {
                 <div class="chart"><h2>"Chart"</h2></div>
             }
@@ -66,7 +66,7 @@ parity: a misspelt or non-existent route fails to **compile** instead of silentl
 to the `&'static str`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 view! {
     // ok — `/`, `/typed`, `/users` all exist under src/app/
@@ -76,7 +76,7 @@ view! {
 ```
 
 A dynamic param matches any **one** segment, and a declared `[...rest]` catch-all matches the rest,
-so `route_path!("/posts/hello-velo")` resolves against `src/app/posts/[slug]/page.rs`. A typo that
+so `route_path!("/posts/hello-veloasm")` resolves against `src/app/posts/[slug]/page.rs`. A typo that
 matches nothing produces a build error listing the available routes:
 
 ```text
@@ -89,7 +89,7 @@ error: route_path! failed: no route in `src/app/` matches "/nope"
       - /users/:id
 ```
 
-`route_path!` is a path-only helper (`/posts/hello-velo`), not a path *builder* — to build a route
+`route_path!` is a path-only helper (`/posts/hello-veloasm`), not a path *builder* — to build a route
 with a runtime value use `paths::*` (e.g. `paths::users_id(id)` where `id: &str`).
 
 ### Compile-checked `<Link to>` literals
@@ -117,4 +117,5 @@ view! {
 
 See `examples/typed-nav` for a full demo: active-state nav via `route_path!` and literal `to`,
 `navigate_to`, `paths::*` builders, and typed `AppRouter::use_param` reads on param pages.
+
 

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Global error-boundary fallback for any route. Renders when a subtree
 /// raises `boundary_fault` (e.g. the task-detail "task not found" path).
@@ -13,3 +13,4 @@ pub fn error() -> DomNode {
         </div>
     }
 }
+

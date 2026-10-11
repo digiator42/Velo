@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::dashboard::monitor_page;
@@ -9,9 +9,9 @@ mod dashboard;
 fn home_page() -> DomNode {
     view! {
         <div class="page home">
-            <h1>"Velo Engine Workspace v1.0"</h1>
+            <h1>"veloasm Engine Workspace v1.0"</h1>
             <p>"Welcome to your custom compiled, ultra-high-performance WebAssembly application framework environment."</p>
-            <p>"Velo skips Virtual DOM tree comparison bottlenecks completely, enabling pure surgical state updates natively."</p>
+            <p>"veloasm skips Virtual DOM tree comparison bottlenecks completely, enabling pure surgical state updates natively."</p>
         </div>
     }
 }
@@ -80,4 +80,5 @@ pub fn run_app() {
 
     mount(app_shell);
 }
+
 

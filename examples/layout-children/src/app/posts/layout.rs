@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Nested segment layout for `/posts` — receives its page as `child` and wraps
 /// it, proving layouts compose like components: root shell → segment shell →

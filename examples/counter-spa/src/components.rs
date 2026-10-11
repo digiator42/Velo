@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 // `name` arrives as a Copy `RwSignal` handle: the caller passes it by value
 // with no `.clone()`, and `{ name }` auto-unwraps it via `ViewValue`.

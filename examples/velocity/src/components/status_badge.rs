@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A status badge whose class is computed with `class_names!` from the task
 /// status (Todo / InProgress / Done).
@@ -18,3 +18,4 @@ pub fn StatusBadge(status: crate::api::Status) -> DomNode {
         <span class={ class_names!("badge", class) }>{ label.to_string() }</span>
     }
 }
+

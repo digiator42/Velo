@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A toggle button that flips the UI between light and dark themes.
 ///
@@ -18,3 +18,4 @@ pub fn ThemeToggle() -> DomNode {
         </button>
     }
 }
+

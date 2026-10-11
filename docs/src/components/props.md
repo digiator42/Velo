@@ -12,7 +12,7 @@ call site.
 To keep a child component reactive to parent state, pass a `ReadSignal<T>`, `RwSignal<T>`, or `Signal<T>` handle as a prop:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[component]
 fn MetricDisplay(title: String, value: RwSignal<i32>) {
@@ -48,3 +48,4 @@ fn StatusBadge(label: String, is_primary: bool) {
     }
 }
 ```
+

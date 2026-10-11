@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Global not-found page, registered at the `/**` fallback route.
 #[not_found]

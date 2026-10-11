@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 
 /// A modal form for creating a new task. Exercises `bind:value` (text inputs)
@@ -71,3 +71,4 @@ pub fn CreateTaskModal(open: bool,
         </div>
     }
 }
+

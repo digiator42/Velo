@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -17,9 +17,10 @@ pub fn page() -> DomNode {
                 "So is a specific post slug into "
                 <code>"/posts/[slug]"</code>
                 ": "
-                <code>{ route_path!("/posts/hello-velo") }</code>
+                <code>{ route_path!("/posts/hello-veloasm") }</code>
                 "."
             </p>
         </div>
     }
 }
+

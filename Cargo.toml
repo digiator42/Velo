@@ -38,3 +38,5 @@ opt-level = "z"   # Optimize for size while keeping high execution speed
 lto = true        # Link-Time Optimization across all crates
 codegen-units = 1 # Maximize optimization at the cost of compile time
 panic = "abort"   # Drop panic strings to heavily reduce binary bloat
+
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Global error-boundary fallback: rendered when any route below it panics.
 #[error]

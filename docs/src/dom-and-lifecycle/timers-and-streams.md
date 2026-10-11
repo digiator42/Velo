@@ -12,7 +12,7 @@ all with explicit lifetime rules so nothing leaks.
 browser consumes the callback after it fires, so there is nothing to hold:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 // Toast auto-dismiss
 timeout(3_000, move || toast.set(None));
@@ -67,10 +67,10 @@ Dropping the wrapper cancels any still-pending invocation.
 
 ---
 
-## 4. Server-Sent Events (`velo::sse::connect`)
+## 4. Server-Sent Events (`veloasm::sse::connect`)
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let stream = sse::connect("/api/events", move |raw| {
     events.update(|e| e.push(raw));
@@ -91,7 +91,7 @@ Read a byte `ReadableStream` (e.g. `response.body()`) line-by-line, with
 UTF-8 decoded incrementally across chunk boundaries:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let resp = fetch("/api/chat/stream").await?;
 if let Some(body) = resp.body() {
@@ -128,3 +128,4 @@ user wheeling is untouched) and pins it to the bottom.
 
 Pair these helpers with `SignalVec`'s capped mutations so streams can't grow
 without bound — see [Reactive Collections](../reactivity/signal-vec.md#4-bounded-collections-capped-helpers).
+

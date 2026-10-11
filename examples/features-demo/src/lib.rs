@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A simple application theme shared via context.
@@ -156,7 +156,7 @@ fn Panel(title: String, children: Vec<DomNode>) {
 #[wasm_bindgen(start)]
 pub fn main() {
     std::panic::set_hook(Box::new(|info| {
-        web_sys::console::error_1(&format!("VELO PANIC: {}", info).into());
+        web_sys::console::error_1(&format!("veloasm PANIC: {}", info).into());
     }));
     run_app();
 }
@@ -168,7 +168,7 @@ pub fn run_app() {
 
     let app_shell = view! {
         <div id="app-container">
-            <h1>"Velo — new features demo"</h1>
+            <h1>"veloasm — new features demo"</h1>
             <Panel title={ "Named props & children".to_string() }>
                 <p>"children passed by name"</p>
                 <ThemeBadge />
@@ -183,3 +183,4 @@ pub fn run_app() {
     // `Drop` impl) removes the mounted tree from the DOM.
     std::mem::forget(mount(app_shell));
 }
+

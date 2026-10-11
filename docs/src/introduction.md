@@ -1,6 +1,6 @@
-# Introduction to Velo
+# Introduction to veloasm
 
-**Velo** is a modern, high-performance, client-side WebAssembly framework for building Single Page Applications (SPAs) in Rust.
+**veloasm** is a modern, high-performance, client-side WebAssembly framework for building Single Page Applications (SPAs) in Rust.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -14,13 +14,13 @@
 
 ---
 
-## Why Velo?
+## Why veloasm?
 
 In traditional web frameworks (like React or standard Virtual DOM-based WASM frameworks), state mutations trigger a re-render of an entire component tree. The framework generates a Virtual DOM tree in memory, diffs it against the previous tree, and calculates patches for the real browser DOM.
 
-**Velo completely removes the Virtual DOM layer.**
+**veloasm completely removes the Virtual DOM layer.**
 
-Instead, Velo uses **fine-grained reactivity**:
+Instead, veloasm uses **fine-grained reactivity**:
 1. Your application runs once to construct the initial DOM layout.
 2. Reactive signals establish direct listener relationships with specific DOM text nodes, element attributes, and class lists.
 3. When a signal changes, **only the single native DOM node that depends on that signal is updated** directly via browser APIs.
@@ -40,4 +40,5 @@ Instead, Velo uses **fine-grained reactivity**:
 
 ## Next Steps
 
-Jump into the [Installation & Toolchain](getting-started/installation.md) guide to set up your environment, or head straight to the [Quickstart Guide](getting-started/quickstart.md) to build your first Velo application in under 5 minutes!
+Jump into the [Installation & Toolchain](getting-started/installation.md) guide to set up your environment, or head straight to the [Quickstart Guide](getting-started/quickstart.md) to build your first veloasm application in under 5 minutes!
+

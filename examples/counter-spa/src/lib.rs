@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::*;
 mod components;
 use components::{UserCard, UserCardProps};
@@ -11,7 +11,7 @@ use components::{UserCard, UserCardProps};
 pub fn home_page() -> DomNode {
     view! {
         <div class="page home">
-            <h1>"Welcome to Velo SPA"</h1>
+            <h1>"Welcome to veloasm SPA"</h1>
             <p>"This is an ultra high performance desktop-grade client-side application running entirely in WebAssembly."</p>
         </div>
     }
@@ -70,11 +70,11 @@ pub fn dashboard_page() -> DomNode {
                 </button>
 
                 // Async arrow handler: updates immediately, then `.await`s
-                // `velo::sleep` before a second tick — `async () => {}` bodies
+                // `veloasm::sleep` before a second tick — `async () => {}` bodies
                 // run through `wasm_bindgen_futures::spawn_local` automatically.
                 <button on:click={ async () => {
                     count.update(|c| *c += 1);
-                    velo::sleep(250).await;
+                    veloasm::sleep(250).await;
                     count.update(|c| *c += 1);
                 } }>
                     "Async Increment (+1, then +1 after 250ms)"

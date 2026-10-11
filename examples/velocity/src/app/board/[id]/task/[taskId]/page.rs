@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use std::rc::Rc;
 
 use crate::api::MockApi;
@@ -19,7 +19,7 @@ pub fn page() -> DomNode {
     let tasks = create_resource(move || {
         let pid = tasks_pid.clone();
         async move {
-            velo::sleep(350).await;
+            veloasm::sleep(350).await;
             MockApi::tasks(&pid)
         }
     });
@@ -51,13 +51,14 @@ pub fn page() -> DomNode {
                             <TaskDetail
                                 task={ t }
                                 project_id={ project_id.clone() }
-                                on_close={ Rc::new(move || velo::navigate_to(&paths::board_id(&close_pid))) } />
+                                on_close={ Rc::new(move || veloasm::navigate_to(&paths::board_id(&close_pid))) } />
                         },
-                        None => velo::boundary_fault("task not found"),
+                        None => veloasm::boundary_fault("task not found"),
                     }
                 } }
             </Suspense>
         </div>
     }
 }
+
 

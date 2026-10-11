@@ -6,15 +6,15 @@ _A Hybrid Log Aggregator & Client-Side Security Threat Intelligence Platform_
 
 Logs-Soc operates in two complementary modes within one full-stack application:
 
-1. **Real-Time Streaming Mode (Server-Driven):** External systems stream live application telemetry into GritShield. GritShield filters, tags, and pushes logs over Server-Sent Events (SSE) or WebSockets to the Velo dashboard in real time.
+1. **Real-Time Streaming Mode (Server-Driven):** External systems stream live application telemetry into GritShield. GritShield filters, tags, and pushes logs over Server-Sent Events (SSE) or WebSockets to the veloasm dashboard in real time.
 
-2. **Privacy-Preserving Heavy Analysis Mode (Client-Driven):** Security analysts drag-and-drop multi-gigabyte historical log dumps (e.g., CloudTrail, Nginx, PCAPs) directly into the browser. Velo parses and analyzes logs locally inside Web Workers using compiled Rust rule engines without uploading sensitive raw data. Only extracted, verified threat alerts and malicious IPs are synced back to GritShield's threat database.
+2. **Privacy-Preserving Heavy Analysis Mode (Client-Driven):** Security analysts drag-and-drop multi-gigabyte historical log dumps (e.g., CloudTrail, Nginx, PCAPs) directly into the browser. veloasm parses and analyzes logs locally inside Web Workers using compiled Rust rule engines without uploading sensitive raw data. Only extracted, verified threat alerts and malicious IPs are synced back to GritShield's threat database.
 
 ## System Architecture
 
 `
 [EXTERNAL SOURCES] -> GritShield (ingest, filter, ring buffer, SSE/WS)
-                  -> Velo WASM Frontend (reactive dashboard)
+                  -> veloasm WASM Frontend (reactive dashboard)
                   -> Web Worker (chunked parsing: regex, Shannon entropy, sliding-window anomaly)
                      -> flags -> POST /api/v1/threats -> GritShield DB + MCP
 `
@@ -47,5 +47,6 @@ Logs-Soc operates in two complementary modes within one full-stack application:
 | GritShield Async Middleware | rate limiting + security headers | non-blocking, clean short-circuit |
 | GritShield SSE Pumping | /api/v1/stream | sustained push, no socket FD leaks |
 | GritShield MCP Server | tools/prompts | AI agents query/mutate |
-| Velo Web Worker WASM | multi-threaded parser | 1M lines (~500MB), no main-thread drops |
-| Velo Reactive DOM | live feed | 100+ events/sec smooth |
+| veloasm Web Worker WASM | multi-threaded parser | 1M lines (~500MB), no main-thread drops |
+| veloasm Reactive DOM | live feed | 100+ events/sec smooth |
+

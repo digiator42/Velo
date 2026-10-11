@@ -1,7 +1,7 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -12,9 +12,10 @@ pub fn main() {
                 <Link to={ paths::INDEX } label="Home" active_class="is-active" />
             </nav>
             <main>
-                <Router routes={ velo_app::routes() } />
+                <Router routes={ veloasm_app::routes() } />
             </main>
         </div>
     };
     mount(shell);
 }
+

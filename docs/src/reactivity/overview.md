@@ -1,6 +1,6 @@
 # Reactivity Overview & Mental Model
 
-Velo's reactivity model is inspired by SolidJS and fine-grained reactive engines. It operates on a **push-pull dependency graph** with automatic tracking.
+veloasm's reactivity model is inspired by SolidJS and fine-grained reactive engines. It operates on a **push-pull dependency graph** with automatic tracking.
 
 ```
 ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
@@ -14,7 +14,7 @@ Velo's reactivity model is inspired by SolidJS and fine-grained reactive engines
 ## 1. How Automatic Tracking Works
 
 When an effect runs:
-1. Velo sets a thread-local identifier pointing to the currently executing effect (`ACTIVE_EFFECT_ID`).
+1. veloasm sets a thread-local identifier pointing to the currently executing effect (`ACTIVE_EFFECT_ID`).
 2. Any signal whose `.get()` method is invoked reads this thread-local and adds the active effect to its internal subscriber list (`subscribers`).
 3. When the effect finishes executing, `ACTIVE_EFFECT_ID` is cleared.
 4. Future calls to `.set()` on that signal notify all registered subscribers, re-executing the effect.
@@ -23,7 +23,7 @@ When an effect runs:
 
 ## 2. No Component Re-renders
 
-In Velo, **component functions run exactly once**.
+In veloasm, **component functions run exactly once**.
 
 ```rust
 #[component]
@@ -43,3 +43,4 @@ fn Counter() {
 ```
 
 When `count.set(...)` is called, `Counter()` is **not** called again. Only the specific reactive text node binding `{ count }` re-evaluates its value and writes to the browser DOM.
+

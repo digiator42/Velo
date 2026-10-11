@@ -7,7 +7,7 @@ The `view!` procedural macro allows you to write HTML-like markup in Rust that c
 ## 1. Basic Syntax
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 fn render_card() -> DomNode {
     view! {
@@ -30,3 +30,4 @@ fn render_card() -> DomNode {
 3. **Rust Expressions**: Wrap any dynamic Rust value, signal, closure, or conditional block in `{ ... }`.
 4. **Self-Closing Tags**: Elements without children can self-close: `<input type="text" />`, `<hr />`, `<br />`.
 5. **Attributes**: Passed with `attr="static"` or `attr={ dynamic_expr }`.
+

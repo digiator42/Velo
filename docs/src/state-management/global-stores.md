@@ -7,7 +7,7 @@ For larger applications with complex domains, grouping related signals and colle
 ## 1. Structuring an App State Store
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[derive(Clone)]
 pub struct Task {
@@ -94,3 +94,4 @@ fn AddTaskBar() {
     }
 }
 ```
+

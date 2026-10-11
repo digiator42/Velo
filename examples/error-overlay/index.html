@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Velo Dev Error Overlay</title>
+    <title>veloasm Dev Error Overlay</title>
     <style>
         body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
         .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; max-width: 420px; }
@@ -11,13 +11,13 @@
         button:hover { background: #0284c7; color: white; }
         code { background: #334155; padding: 2px 6px; border-radius: 4px; color: #a5f3fc; }
     </style>
-    <!-- No overlay wiring needed: Velo's built-in dev error overlay is
+    <!-- No overlay wiring needed: veloasm's built-in dev error overlay is
          installed automatically by mount() whenever trunk serve runs it. -->
     <link rel="data-trunk" href="Cargo.toml" data-type="rust"/>
 </head>
 <body>
     <div class="card">
-        <h1>"Velo dev overlay"</h1>
+        <h1>"veloasm dev overlay"</h1>
         <p>Start <code>trunk serve --watch</code>, then introduce a syntax/type error in <code>src/lib.rs</code> — the failure lands here as a styled panel instead of a dead tab.</p>
     </div>
 </body>

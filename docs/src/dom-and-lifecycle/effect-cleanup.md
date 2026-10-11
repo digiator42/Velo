@@ -1,6 +1,6 @@
 # Effect Lifecycle & Resource Cleanup
 
-In client-side applications, failing to unbind event listeners, drop intervals, or close websockets when components unmount causes memory leaks. Velo handles resource cleanup through its node ownership tree: **everything a node creates is owned by that node and dies with it.**
+In client-side applications, failing to unbind event listeners, drop intervals, or close websockets when components unmount causes memory leaks. veloasm handles resource cleanup through its node ownership tree: **everything a node creates is owned by that node and dies with it.**
 
 ---
 
@@ -67,7 +67,7 @@ parent.release(&child);           // manual removal
 `effect!(|| ...)` behaves differently depending on where it runs:
 
 * **Outside any scope** (app setup code): the handle is retained — the effect lives for the app lifetime, so a bare `effect!(...)` statement stays reactive.
-* **Inside a scope** (component body, keyed-list row, `velo::scope`): the effect is adopted by the enclosing scope and **disposed when that owner is torn down**.
+* **Inside a scope** (component body, keyed-list row, `veloasm::scope`): the effect is adopted by the enclosing scope and **disposed when that owner is torn down**.
 
 Scopes come from three places:
 
@@ -82,13 +82,13 @@ fn Counter() {
 { for item in items key = |i| i.id { <Row item={item} /> } }
 
 // Manual scopes for arbitrary code:
-let (_value, guard) = velo::scope(|| {
+let (_value, guard) = veloasm::scope(|| {
     effect!(move || poll(status.get()));
 });
 // `guard` dropped => effect disposed
 ```
 
-`velo::scoped_node(|| ...)` is the underlying primitive `#[component]` and the router use: effects created while building a node attach to that node.
+`veloasm::scoped_node(|| ...)` is the underlying primitive `#[component]` and the router use: effects created while building a node attach to that node.
 
 **Router pages are scoped per navigation** — effects created while rendering a route are attached to the page node and disposed on the next navigation, so long-lived SPAs don't accumulate page effects.
 
@@ -101,7 +101,7 @@ let (_value, guard) = velo::scope(|| {
 To register custom cleanup logic on an effect:
 
 ```rust
-use velo::create_effect_with_cleanup;
+use veloasm::create_effect_with_cleanup;
 
 let handle = create_effect_with_cleanup(
     || {
@@ -130,3 +130,4 @@ let h = create_effect(/* ... */);
 // ...
 drop(h); // disposed immediately
 ```
+

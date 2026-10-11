@@ -4,7 +4,7 @@
 //! (event handlers inject a discarded `_evt` arg) or `{ () => .. }` for reactive
 //! child closures. All forms expand to real Rust `move` closures at compile time.
 
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A tiny counter toggled through arrow-sugar event handlers.
@@ -70,10 +70,11 @@ pub fn main() {
 pub fn run_app() {
     let app = view! {
         <div id="app-container">
-            <h1>"Velo — arrow-closure sugar"</h1>
+            <h1>"veloasm — arrow-closure sugar"</h1>
             { counter_page() }
             { derived_page() }
         </div>
     };
     mount(app);
 }
+

@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A single post at `/posts/:slug` — shares the exact layout chain with
 /// `/posts`, so both shells persist across the navigation (M4 leaf-only swap).
@@ -17,3 +17,4 @@ pub fn page() -> DomNode {
         </article>
     }
 }
+

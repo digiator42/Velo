@@ -19,7 +19,7 @@ use wasm_bindgen::JsCast;
 
 fn window() -> web_sys::Window {
     web_sys::window()
-        .expect("Velo: No global window found. Are you running in a browser environment?")
+        .expect("veloasm: No global window found. Are you running in a browser environment?")
 }
 
 fn clamp_ms(ms: u32) -> i32 {
@@ -64,7 +64,7 @@ pub fn timeout(ms: u32, f: impl FnOnce() + 'static) -> TimeoutHandle {
             cb.unchecked_ref::<js_sys::Function>(),
             clamp_ms(ms),
         )
-        .expect("Velo: window.setTimeout failed");
+        .expect("veloasm: window.setTimeout failed");
     id.set(Some(handle));
     TimeoutHandle { id }
 }
@@ -108,7 +108,7 @@ pub fn interval(ms: u32, f: impl FnMut() + 'static) -> IntervalHandle {
             cb.as_ref().unchecked_ref(),
             clamp_ms(ms),
         )
-        .expect("Velo: window.setInterval failed");
+        .expect("veloasm: window.setInterval failed");
     IntervalHandle {
         id: Some(id),
         _cb: cb,
@@ -177,3 +177,4 @@ pub fn debounced<F: FnMut() + 'static>(f: F, ms: u32) -> impl FnMut() {
         }
     }
 }
+

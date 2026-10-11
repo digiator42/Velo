@@ -1,4 +1,4 @@
-//! # Velo — the unified Velo web framework
+//! # veloasm — the unified veloasm web framework
 //!
 //! Single-crate facade that merges the former `velo_core` (reactivity engine),
 //! `velo_dom` (DOM layer), and `velo_router` (client-side router) into one
@@ -583,7 +583,7 @@ thread_local! {
 /// directly — but it is public for scoping arbitrary effects:
 ///
 /// ```ignore
-/// let _guard = velo::scope(|| {
+/// let _guard = veloasm::scope(|| {
 ///     effect!(move || log(count.get())); // disposed when _guard drops
 /// });
 /// ```
@@ -622,7 +622,7 @@ pub fn close_scope() -> Rc<RefCell<Vec<EffectHandle>>> {
         stack
             .borrow_mut()
             .pop()
-            .expect("Velo: close_scope without a matching open_scope")
+            .expect("veloasm: close_scope without a matching open_scope")
     })
 }
 
@@ -1227,7 +1227,7 @@ pub async fn sleep(ms: u32) {
     let promise = js_sys::Promise::new(
         &mut |resolve: js_sys::Function, _reject: js_sys::Function| {
             let window = web_sys::window().expect(
-                "Velo: No global window found. Are you running in a browser environment?",
+                "veloasm: No global window found. Are you running in a browser environment?",
             );
             let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
                 &resolve,
@@ -1239,11 +1239,11 @@ pub async fn sleep(ms: u32) {
 }
 
 // =============================================================================
-// `velo::fetch` — ergonomic JS `fetch` sugar
+// `veloasm::fetch` — ergonomic JS `fetch` sugar
 //
 // Wraps `window.fetch` behind an awaitable future (mirroring the JS
 // `fetch(url).then(r => r.text())` feel, but in Rust), so developers can
-// `.await` it directly inside Velo's `async () => {}` event/reactive handlers.
+// `.await` it directly inside veloasm's `async () => {}` event/reactive handlers.
 // =============================================================================
 
 /// A `window.fetch` response, mirroring the JS `Response` ergonomics.
@@ -1294,7 +1294,7 @@ impl VeloResponse {
         let text_promise = self.inner.text()?;
         let text = wasm_bindgen_futures::JsFuture::from(text_promise).await?;
         Ok(text.as_string().ok_or_else(|| {
-            JsValue::from_str("Velo: response.body.text() returned a non-string value")
+            JsValue::from_str("veloasm: response.body.text() returned a non-string value")
         })?)
     }
 
@@ -1346,12 +1346,12 @@ impl From<JsValue> for FetchError {
 /// Awaitable `window.fetch` wrapper.
 ///
 /// Returns a [`VeloResponse`] whose body can be read with `.text()` or
-/// `.json()`. Can be `.await`ed directly inside Velo's `async () => {}`
+/// `.json()`. Can be `.await`ed directly inside veloasm's `async () => {}`
 /// handlers; pairs with [`fetch_json`] for typed JSON.
 ///
 /// ```rust,ignore
 /// on:click={ async () => {
-///     let resp = velo::fetch("/api/health").await.unwrap();
+///     let resp = veloasm::fetch("/api/health").await.unwrap();
 ///     if resp.ok() {
 ///         log!("up: {}", resp.status());
 ///     }
@@ -1367,7 +1367,7 @@ pub async fn fetch(url: &str) -> Result<VeloResponse, JsValue> {
         future.await?
     } else {
         let window = web_sys::window()
-            .ok_or_else(|| JsValue::from_str("Velo: No global window found for fetch"))?;
+            .ok_or_else(|| JsValue::from_str("veloasm: No global window found for fetch"))?;
         let promise = window.fetch_with_str(url);
         let future = wasm_bindgen_futures::JsFuture::from(promise);
         future.await?
@@ -1375,13 +1375,13 @@ pub async fn fetch(url: &str) -> Result<VeloResponse, JsValue> {
 
     let response: web_sys::Response =
         wasm_bindgen::JsCast::dyn_into(response).map_err(|_| {
-            JsValue::from_str("Velo: fetch resolved to a non-Response object")
+            JsValue::from_str("veloasm: fetch resolved to a non-Response object")
         })?;
     Ok(VeloResponse::from_response(response))
 }
 
 /// Fetch a JSON resource and decode it into typed data — the Rust analogue of
-/// `await (await fetch(url)).json()`. Pairs with Velo's `async () => {}`
+/// `await (await fetch(url)).json()`. Pairs with veloasm's `async () => {}`
 /// handlers for a seamless Next.js-like data-fetch feel:
 ///
 /// ```rust,ignore
@@ -1389,7 +1389,7 @@ pub async fn fetch(url: &str) -> Result<VeloResponse, JsValue> {
 /// struct User { name: String, age: u8 }
 ///
 /// let data = create_resource(|| async {
-///     velo::fetch_json::<User>("/api/users/1").await.unwrap()
+///     veloasm::fetch_json::<User>("/api/users/1").await.unwrap()
 /// });
 /// ```
 #[cfg(feature = "json")]
@@ -1419,10 +1419,10 @@ where
 }
 
 // =============================================================================
-// `velo::request` — chainable request builder (POST/PUT/DELETE, headers, bodies)
+// `veloasm::request` — chainable request builder (POST/PUT/DELETE, headers, bodies)
 // =============================================================================
 
-/// Start building a request: `velo::request(url).method("POST").json_body(&v)?.send().await?`.
+/// Start building a request: `veloasm::request(url).method("POST").json_body(&v)?.send().await?`.
 ///
 /// Unlike [`fetch`] (GET-only), the builder covers methods, headers, query
 /// params, and bodies, and [`RequestBuilder::send`] turns non-2xx statuses
@@ -1431,7 +1431,7 @@ where
 ///
 /// ```rust,ignore
 /// // What used to be ~40 lines of web-sys boilerplate:
-/// velo::request("/api/v1/threats")
+/// veloasm::request("/api/v1/threats")
 ///     .method("POST")
 ///     .json_body(&threat)?
 ///     .send()
@@ -1504,12 +1504,12 @@ impl RequestBuilder {
     /// Send the request. Non-2xx statuses become [`FetchError::Status`].
     pub async fn send(self) -> Result<VeloResponse, FetchError> {
         let headers = web_sys::Headers::new().map_err(|_| {
-            FetchError::Network("Velo: could not allocate request headers".into())
+            FetchError::Network("veloasm: could not allocate request headers".into())
         })?;
         for (name, value) in &self.headers {
             headers
                 .append(name, value)
-                .map_err(|_| FetchError::Network(format!("Velo: bad header {name}")))?;
+                .map_err(|_| FetchError::Network(format!("veloasm: bad header {name}")))?;
         }
 
         let init = web_sys::RequestInit::new();
@@ -1521,18 +1521,18 @@ impl RequestBuilder {
 
         let request =
             web_sys::Request::new_with_str_and_init(&self.url, &init).map_err(|_| {
-                FetchError::Network(format!("Velo: bad request URL {}", self.url))
+                FetchError::Network(format!("veloasm: bad request URL {}", self.url))
             })?;
         // `fetch` lives on `Window` in web-sys, not on `Request`.
         let window = web_sys::window()
-            .ok_or_else(|| FetchError::Network("Velo: No global window found".into()))?;
+            .ok_or_else(|| FetchError::Network("veloasm: No global window found".into()))?;
         let response = wasm_bindgen_futures::JsFuture::from(
             window.fetch_with_request(&request),
         )
         .await?;
         let response: web_sys::Response = wasm_bindgen::JsCast::dyn_into(response)
             .map_err(|_| {
-                FetchError::Decode("Velo: fetch resolved to a non-Response".into())
+                FetchError::Decode("veloasm: fetch resolved to a non-Response".into())
             })?;
 
         if !response.ok() {
@@ -1549,7 +1549,7 @@ impl RequestBuilder {
 /// [`fetch_json`]. Requires the `json` feature.
 ///
 /// ```rust,ignore
-/// let created: Rule = velo::post_json("/api/v1/firewall/rules", &input).await?;
+/// let created: Rule = veloasm::post_json("/api/v1/firewall/rules", &input).await?;
 /// ```
 #[cfg(feature = "json")]
 pub async fn post_json<B, T>(url: &str, body: &B) -> Result<T, FetchError>
@@ -1564,7 +1564,7 @@ where
 }
 
 // =============================================================================
-// `velo::prefetch` — warm up a resource before the user navigates
+// `veloasm::prefetch` — warm up a resource before the user navigates
 // =============================================================================
 
 /// Fire-and-forget pre-warm of a URL's payload (used by `<Link prefetch />`).
@@ -1602,9 +1602,9 @@ use web_sys::{Document, Element, Node};
 /// Helper to easily access the global window document instance
 pub fn document() -> Document {
     web_sys::window()
-        .expect("Velo: No global window found. Are you running in a browser environment?")
+        .expect("veloasm: No global window found. Are you running in a browser environment?")
         .document()
-        .expect("Velo: Window should contain a valid document.")
+        .expect("veloasm: Window should contain a valid document.")
 }
 
 pub trait RenderDynamic {
@@ -1855,7 +1855,7 @@ impl DomNode {
     pub fn element(tag: &str) -> Self {
         let el = document()
             .create_element(tag)
-            .expect("Velo: Failed to create DOM element tag");
+            .expect("veloasm: Failed to create DOM element tag");
         Self::make(el.into())
     }
 
@@ -1893,7 +1893,7 @@ impl DomNode {
     pub fn display_contents() -> Self {
         let el: Element = document().create_element("div").unwrap();
         el.set_attribute("style", "display: contents")
-            .expect("Velo: Failed to set transparent container style");
+            .expect("veloasm: Failed to set transparent container style");
         Self::make(el.into())
     }
 
@@ -1965,7 +1965,7 @@ impl DomNode {
     pub fn append(&self, child: &DomNode) {
         self.raw_node
             .append_child(&child.raw_node)
-            .expect("Velo: Failed to append child node layout hook");
+            .expect("veloasm: Failed to append child node layout hook");
         self.res.borrow_mut().absorb(&child.res);
     }
 
@@ -1986,13 +1986,13 @@ impl DomNode {
             .raw_node
             .clone()
             .dyn_into()
-            .expect("Velo: Can only bind attributes to element nodes");
+            .expect("veloasm: Can only bind attributes to element nodes");
         let attr_name = name.to_string();
 
         let handle = create_effect(move || {
             let value = f();
             el.set_attribute(&attr_name, &value)
-                .expect("Velo: Failed to update element node attribute");
+                .expect("veloasm: Failed to update element node attribute");
         });
         self.retain_effect(handle);
     }
@@ -2010,7 +2010,7 @@ impl DomNode {
 
         self.raw_node
             .add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref())
-            .expect("Velo: Failed to attach event listener callback");
+            .expect("veloasm: Failed to attach event listener callback");
 
         self.res
             .borrow_mut()
@@ -2040,7 +2040,7 @@ impl DomNode {
             .raw_node
             .clone()
             .dyn_into()
-            .expect("Velo: Can only toggle classes on element nodes");
+            .expect("veloasm: Can only toggle classes on element nodes");
         let class_name = class_name.to_string();
 
         let handle = create_effect(move || {
@@ -2085,7 +2085,7 @@ impl DomNode {
             .raw_node
             .clone()
             .dyn_into()
-            .expect("Velo: reactive_classes can only apply to element nodes");
+            .expect("veloasm: reactive_classes can only apply to element nodes");
 
         // Registry shared by every contributor. `order` fixes the class order
         // so the rebuilt className is deterministic (base first, then toggles
@@ -2144,7 +2144,7 @@ impl DomNode {
             .raw_node
             .clone()
             .dyn_into()
-            .expect("Velo: Can only bind styles to element nodes");
+            .expect("veloasm: Can only bind styles to element nodes");
         let property = property.to_string();
 
         // Accumulate inline style properties so concurrent bindings don't clobber.
@@ -2188,7 +2188,7 @@ impl DomNode {
         // NOTE: FRender does NOT need + Clone. The closure is moved into the
         // effect once and called multiple times from within it — cloning would
         // force the closure to be Copy, which breaks non-Copy captures.
-        // See https://github.com/velo-framework/velo/issues/... for context.
+        // See https://github.com/Veloasm-framework/Veloasm/issues/... for context.
         FRender: Fn(&T) -> DomNode + 'static,
     {
         use std::cell::RefCell;
@@ -2199,7 +2199,7 @@ impl DomNode {
             .raw_node
             .clone()
             .dyn_into()
-            .expect("Velo: Can only render a list into an element node");
+            .expect("veloasm: Can only render a list into an element node");
 
         // Node map keyed by the item's stable key, plus an ordered list of keys
         // so we can detect moves/restores cheaply.
@@ -2349,7 +2349,7 @@ impl DomNode {
             res.borrow_mut().absorb(&resolved_node.res);
             container_raw
                 .append_child(&resolved_node.raw_node)
-                .expect("Velo: Failed to append dynamic expression variant");
+                .expect("veloasm: Failed to append dynamic expression variant");
         });
         container.retain_effect(handle);
         container
@@ -2440,7 +2440,7 @@ where
 /// // A heavy page section that loads asynchronously with a visible spinner:
 /// <Suspense loading={ r.loading() } fallback={ view! { <p>"Loading…"</p> } }>
 ///     { use_dynamic(|| async {
-///         velo::sleep(400).await;          // pretend to fetch a chunk
+///         veloasm::sleep(400).await;          // pretend to fetch a chunk
 ///         view! { <Chart data={ data } /> }
 ///     }) }
 /// </Suspense>
@@ -2486,15 +2486,15 @@ where
 /// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
 /// `mount_to_id` appends as a child (creating a wrapper) and cannot be
 /// unmounted via a returned handle.
-#[deprecated(note = "prefer mount()/mount_at(); see Velo docs §8")]
+#[deprecated(note = "prefer mount()/mount_at(); see veloasm docs §8")]
 pub fn mount_to_id(id: &str, root_node: DomNode) {
     let container = document()
         .get_element_by_id(id)
-        .expect("Velo: Mount targets specified container element ID could not be located");
+        .expect("veloasm: Mount targets specified container element ID could not be located");
 
     container
         .append_child(&root_node.raw_node)
-        .expect("Velo: Failed to mount root node allocation to layout tree container target");
+        .expect("veloasm: Failed to mount root node allocation to layout tree container target");
     retain_root(&root_node);
 }
 
@@ -2502,7 +2502,7 @@ pub fn mount_to_id(id: &str, root_node: DomNode) {
 // Modern Mounting API  (§8): mount(), mount_at(), RootHandle
 // ---------------------------------------------------------------------------
 
-/// A handle to a mounted Velo root. Dropping it unmounts the app from the
+/// A handle to a mounted veloasm root. Dropping it unmounts the app from the
 /// DOM (removes the root node from its parent). Calling `.unmount()` does
 /// the same explicitly and is idempotent.
 ///
@@ -2560,14 +2560,14 @@ fn retain_root(root: &DomNode) {
 ///
 /// ```ignore
 /// let app = view! { <div class="page">...</div> };
-/// let handle = velo::mount(app);
+/// let handle = veloasm::mount(app);
 /// // later: handle.unmount();
 /// ```
 pub fn mount(root: DomNode) -> RootHandle {
     install_dev_overlay();
     let body = document()
         .body()
-        .expect("Velo: document has no body — are you running in a browser?");
+        .expect("veloasm: document has no body — are you running in a browser?");
     mount_at(&body, root)
 }
 
@@ -2580,13 +2580,13 @@ pub fn mount(root: DomNode) -> RootHandle {
 /// ```ignore
 /// let app = view! { <div class="page">...</div> };
 /// let div = document().get_element_by_id("app").unwrap();
-/// let handle = velo::mount_at(&div, app);
+/// let handle = veloasm::mount_at(&div, app);
 /// ```
 pub fn mount_at(target: &web_sys::Node, root: DomNode) -> RootHandle {
     install_dev_overlay();
     target
         .append_child(&root.raw_node)
-        .expect("Velo: Failed to mount root node into target");
+        .expect("veloasm: Failed to mount root node into target");
     retain_root(&root);
     RootHandle { root }
 }
@@ -2605,8 +2605,8 @@ pub fn mount_at(target: &web_sys::Node, root: DomNode) -> RootHandle {
 use std::sync::atomic::{AtomicBool, Ordering};
 static DEV_OVERLAY_INSTALLED: AtomicBool = AtomicBool::new(false);
 
-/// The compiled-in JS for Velo's dev error overlay. A human-readable,
-/// editable reference copy lives at `docs/templates/velo-error-overlay.js`;
+/// The compiled-in JS for veloasm's dev error overlay. A human-readable,
+/// editable reference copy lives at `docs/templates/Veloasm-error-overlay.js`;
 /// keep the two in sync if behavior changes.
 const DEV_OVERLAY_JS: &str = r##"(() => {
   if (window.__veloDevOverlay) return;
@@ -2621,7 +2621,7 @@ const DEV_OVERLAY_JS: &str = r##"(() => {
   };
   const buildPanel = () => {
     const root = document.createElement("div");
-    root.id = "velo-dev-overlay";
+    root.id = "veloasm-dev-overlay";
     root.setAttribute("style", "position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:2rem;background:rgba(2,6,23,.72);backdrop-filter:blur(6px);font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;");
     const card = document.createElement("div");
     card.setAttribute("style", "max-width:min(880px,100%);width:100%;max-height:85vh;overflow:auto;border:1px solid #7f1d1d;border-radius:14px;background:#111827;box-shadow:0 24px 60px rgba(0,0,0,.5);");
@@ -2638,11 +2638,11 @@ const DEV_OVERLAY_JS: &str = r##"(() => {
     close.addEventListener("mouseenter", () => close.style.color = "#f1f5f9");
     close.addEventListener("mouseleave", () => close.style.color = "#94a3b8");
     const msg = document.createElement("pre");
-    msg.id = "velo-dev-overlay-msg";
+    msg.id = "veloasm-dev-overlay-msg";
     msg.setAttribute("style", "margin:1rem 1.25rem;white-space:pre-wrap;word-break:break-word;font:0.83rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fbbf24;");
     const foot = document.createElement("div");
     foot.setAttribute("style", "padding:.6rem 1.25rem;border-top:1px solid #1f2937;color:#64748b;font-size:.78rem;");
-    foot.textContent = "Velo dev overlay \u00b7 full diagnostic (file.rs:line:col) is in the trunk server terminal \u00b7 save the fix and this page reloads automatically.";
+    foot.textContent = "veloasm dev overlay \u00b7 full diagnostic (file.rs:line:col) is in the trunk server terminal \u00b7 save the fix and this page reloads automatically.";
     head.append(icon, title, close);
     card.append(head, msg, foot);
     root.appendChild(card);
@@ -2662,14 +2662,14 @@ const DEV_OVERLAY_JS: &str = r##"(() => {
     let m; try { m = JSON.parse(ev.data); } catch (_e) { return; }
     if (m.type === "reload") tryReload();
     else if (m.type === "buildFailure") {
-      console.error("Velo dev overlay: build failed\n" + m.data.reason);
+      console.error("veloasm dev overlay: build failed\n" + m.data.reason);
       if (!panel) panel = buildPanel();
-      document.getElementById("velo-dev-overlay-msg").textContent = m.data.reason || "Unknown build failure";
+      document.getElementById("veloasm-dev-overlay-msg").textContent = m.data.reason || "Unknown build failure";
     }
   };
 })();"##;
 
-/// Inject Velo's built-in dev error overlay (idempotent, no-op outside
+/// Inject veloasm's built-in dev error overlay (idempotent, no-op outside
 /// `trunk serve`). Called automatically by [`mount`]/[`mount_at`].
 pub fn install_dev_overlay() {
     if DEV_OVERLAY_INSTALLED.swap(true, Ordering::SeqCst) {
@@ -2684,15 +2684,15 @@ pub fn install_dev_overlay() {
 /// **Deprecated:** prefer [`mount`] (body) or [`mount_at`] (explicit node).
 /// `mount_to_id` appends as a child (creating a wrapper) and cannot be
 /// unmounted via a returned handle.
-#[deprecated(note = "prefer mount()/mount_at(); see Velo docs §8")]
+#[deprecated(note = "prefer mount()/mount_at(); see veloasm docs §8")]
 pub fn mount_to_id_deprecated(id: &str, root_node: DomNode) {
     let container = document()
         .get_element_by_id(id)
-        .expect("Velo: Mount targets specified container element ID could not be located");
+        .expect("veloasm: Mount targets specified container element ID could not be located");
 
     container
         .append_child(&root_node.raw_node)
-        .expect("Velo: Failed to mount root node allocation to layout tree container target");
+        .expect("veloasm: Failed to mount root node allocation to layout tree container target");
     retain_root(&root_node);
 }
 
@@ -2724,13 +2724,13 @@ thread_local! {
     // Global tracking signal for the current URL path string
     pub static CURRENT_PATH: Signal<String> = Signal::new(
         web_sys::window()
-            .expect("Velo Router: No window found")
+            .expect("veloasm Router: No window found")
             .location()
             .pathname()
-            .expect("Velo Router: Failed to read pathname")
+            .expect("veloasm Router: Failed to read pathname")
     );
     pub static CURRENT_QUERY: Signal<HashMap<String, String>> =
-        Signal::new(parse_query_string(&web_sys::window().expect("Velo Router: No window found").location().search().unwrap_or_default()));
+        Signal::new(parse_query_string(&web_sys::window().expect("veloasm Router: No window found").location().search().unwrap_or_default()));
 }
 
 fn parse_query_string(query: &str) -> HashMap<String, String> {
@@ -2755,15 +2755,15 @@ fn url_decode(s: &str) -> String {
 
 /// Programmatically updates the browser URL and alerts the active Route Signal
 pub fn navigate_to(path: &str) {
-    let window = web_sys::window().expect("Velo Router: No window found");
+    let window = web_sys::window().expect("veloasm Router: No window found");
     let history = window
         .history()
-        .expect("Velo Router: Accessing history failed");
+        .expect("veloasm Router: Accessing history failed");
 
     // Update browser history state without refreshing the page
     history
         .push_state_with_url(&JsValue::NULL, "", Some(path))
-        .expect("Velo Router: push_state failed");
+        .expect("veloasm Router: push_state failed");
 
     // Inform our fine-grained reactive loop about the location update
     CURRENT_PATH.with(|path_signal| {
@@ -2776,7 +2776,7 @@ pub fn navigate_to(path: &str) {
 
 /// Initializes global browser listeners to intercept browser back/forward buttons
 pub fn init_router_listeners() {
-    let window = web_sys::window().expect("Velo Router: No window found");
+    let window = web_sys::window().expect("veloasm Router: No window found");
 
     let on_popstate = Closure::wrap(Box::new(move |_e: web_sys::PopStateEvent| {
         let current_path_str = web_sys::window().unwrap().location().pathname().unwrap();
@@ -2790,7 +2790,7 @@ pub fn init_router_listeners() {
 
     window
         .add_event_listener_with_callback("popstate", on_popstate.as_ref().unchecked_ref())
-        .expect("Velo Router: Failed to bind popstate listener");
+        .expect("veloasm Router: Failed to bind popstate listener");
 
     on_popstate.forget();
 }
@@ -2871,7 +2871,7 @@ thread_local! {
 }
 
 /// Register the `src/app/` layout chain for each route path (emitted by
-/// `velo::app!`'s generated `routes()`). Idempotent: a path is only stored once.
+/// `veloasm::app!`'s generated `routes()`). Idempotent: a path is only stored once.
 pub fn register_app_layouts(entries: &[(&'static str, &[LayoutFn])]) {
     LAYOUT_REGISTRY.with(|reg| {
         let mut reg = reg.borrow_mut();
@@ -2928,7 +2928,7 @@ pub(crate) fn clear_route_loading() {
 /// A default built-in fallback pane used when a route defines no `error.rs`.
 pub fn default_error_fallback() -> DomNode {
     let div = DomNode::element("div");
-    div.reactive_attribute("class", move || "velo-error-boundary".to_string());
+    div.reactive_attribute("class", move || "veloasm-error-boundary".to_string());
     let p = DomNode::element("p");
     p.append(&DomNode::text("Something went wrong rendering this subtree."));
     div.append(&p);
@@ -2991,7 +2991,7 @@ pub fn error_boundary(fallback: DomNode, build: Box<dyn FnOnce() -> DomNode + 's
 // =============================================================================
 
 /// Re-exported so the `#[route = "..."]` macro (in `velo_macro`) can emit
-/// `velo::inventory::submit! { .. }` without every consuming crate having to
+/// `veloasm::inventory::submit! { .. }` without every consuming crate having to
 /// add `inventory` as its own direct dependency.
 pub use inventory;
 
@@ -3040,7 +3040,7 @@ impl AppRouter {
 
         // Create a persistent placeholder element where pages dynamically swap out
         let view_wrapper = DomNode::element("div");
-        view_wrapper.reactive_attribute("class", || "velo-router-viewport".to_string());
+        view_wrapper.reactive_attribute("class", || "veloasm-router-viewport".to_string());
 
         let current_child: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
 
@@ -3066,7 +3066,7 @@ impl AppRouter {
 
             wrapper_raw
                 .append_child(&new_page_node.raw_node)
-                .expect("Velo Router: Failed to append target route content");
+                .expect("veloasm Router: Failed to append target route content");
 
             // Store reference to clean up on the next navigation cycle
             *child_tracker.borrow_mut() = Some(new_page_node);
@@ -3128,14 +3128,14 @@ pub fn Router(props: RouterProps) -> DomNode {
     }
 
     let view_wrapper = DomNode::element("div");
-    view_wrapper.reactive_attribute("class", move || "velo-router-viewport".to_string());
+    view_wrapper.reactive_attribute("class", move || "veloasm-router-viewport".to_string());
 
     // Stable leaf outlet (M4 / 5.P4): the `app!` layout shell from
     // `register_app_layouts` wraps THIS node; navigating between sibling routes
     // swaps only the leaf inside it, so the layout subtree stays mounted and
     // its local state (signals, scroll) is preserved.
     let outlet = DomNode::element("div");
-    outlet.reactive_attribute("data-velo-route", move || "leaf".to_string());
+    outlet.reactive_attribute("data-veloasm-route", move || "leaf".to_string());
     let outlet_raw = outlet.raw_node.clone();
 
     let shell_holder: Rc<RefCell<Option<DomNode>>> = Rc::new(RefCell::new(None));
@@ -3264,7 +3264,7 @@ pub struct HeadProps {
 }
 
 thread_local! {
-    // Names of `data-velo-meta` elements owned by the most recent <Head>, so a
+    // Names of `data-veloasm-meta` elements owned by the most recent <Head>, so a
     // fresh navigation can clear the previous route's tags instead of stacking.
     static HEAD_META_TAGS: RefCell<Vec<web_sys::Element>> = RefCell::new(Vec::new());
 }
@@ -3278,7 +3278,7 @@ pub fn Head(props: HeadProps) -> DomNode {
         if let Some(t) = doc.query_selector("title").ok().flatten() {
             t.set_text_content(Some(&title));
         } else {
-            let t = doc.create_element("title").expect("Velo: create title element");
+            let t = doc.create_element("title").expect("veloasm: create title element");
             t.set_text_content(Some(&title));
             if let Some(head) = doc.query_selector("head").ok().flatten() {
                 head.append_child(&t).ok();
@@ -3292,7 +3292,7 @@ pub fn Head(props: HeadProps) -> DomNode {
             .query_selector("head")
             .ok()
             .flatten()
-            .expect("Velo: document head");
+            .expect("veloasm: document head");
         // Remove tags left by a previous <Head> navigation so metas never stack.
         HEAD_META_TAGS.with(|tags| {
             let old = std::mem::take(&mut *tags.borrow_mut());
@@ -3305,10 +3305,10 @@ pub fn Head(props: HeadProps) -> DomNode {
             .map(|(name, content)| {
                 let m = doc
                     .create_element("meta")
-                    .expect("Velo: create meta element");
+                    .expect("veloasm: create meta element");
                 m.set_attribute("name", &name).ok();
                 m.set_attribute("content", &content).ok();
-                m.set_attribute("data-velo-meta", "").ok();
+                m.set_attribute("data-veloasm-meta", "").ok();
                 head.append_child(&m).ok();
                 m
             })
@@ -3325,7 +3325,7 @@ pub fn Head(props: HeadProps) -> DomNode {
 /// pre-warm-up via the `prefetch` prop.
 #[allow(non_snake_case)]
 pub struct LinkProps {
-    /// Destination path. Accepts a typed `paths::*` builder from `velo::app!`
+    /// Destination path. Accepts a typed `paths::*` builder from `veloasm::app!`
     /// (or the new `routes!`-free router); string literals coerce via `.into()`.
     pub to: String,
     /// Optional static label text (used when no children are provided).
@@ -3406,13 +3406,13 @@ pub fn Link(props: LinkProps) -> DomNode {
 
 /// The Unified Framework Prelude.
 ///
-/// Bringing this into scope via `use velo::prelude::*;` fully seeds your
+/// Bringing this into scope via `use veloasm::prelude::*;` fully seeds your
 /// application files with reactivity primitives, DOM nodes, components,
 /// routers, and the view! macro.
 pub mod prelude {
     // Re-export wasm-bindgen-futures so the view! macro's generated
     // `wasm_bindgen_futures::spawn_local(...)` for `async () => { .. }` handlers
-    // resolves under `use velo::prelude::*` without per-example boilerplate.
+    // resolves under `use veloasm::prelude::*` without per-example boilerplate.
     pub use wasm_bindgen_futures;
 
     // Re-export core reactive primitives
@@ -3894,4 +3894,5 @@ pub fn shannon_entropy_bytes(bytes: &[u8]) -> f64 {
 pub fn shannon_entropy_str(s: &str) -> f64 {
     shannon_entropy_bytes(s.as_bytes())
 }
+
 

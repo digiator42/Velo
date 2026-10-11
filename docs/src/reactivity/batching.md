@@ -1,13 +1,13 @@
 # Update Batching
 
-When updating multiple signals in succession, notifications can trigger multiple redundant effect runs. Velo provides `batch()` to group updates into a single notification cycle.
+When updating multiple signals in succession, notifications can trigger multiple redundant effect runs. veloasm provides `batch()` to group updates into a single notification cycle.
 
 ---
 
 ## 1. The `batch()` Function
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let first_name = signal!("Ada".to_string());
 let last_name = signal!("Lovelace".to_string());
@@ -42,3 +42,4 @@ batch(|| {
     c.set(3);
 }); // Single synchronized notification cycle runs here
 ```
+

@@ -6,10 +6,10 @@ use std::process::Command;
 
 #[derive(Parser)]
 #[command(
-    name = "velo",
-    about = "Velo — a fine-grained reactive Rust→WASM SPA framework",
-    long_about = "Velo is a fine-grained reactive Rust→WASM SPA framework with a tiny wasm core.\n\
-                  Use `velo new` to scaffold, `velo dev` to run the dev server, `velo build` for production."
+    name = "veloasm",
+    about = "veloasm — a fine-grained reactive Rust→WASM SPA framework",
+    long_about = "veloasm is a fine-grained reactive Rust→WASM SPA framework with a tiny wasm core.\n\
+                  Use `veloasm new` to scaffold, `veloasm dev` to run the dev server, `veloasm build` for production."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Scaffold a new Velo app from the template
+    /// Scaffold a new veloasm app from the template
     New {
         /// Name of the new app (used as directory name under examples/)
         name: String,
@@ -82,10 +82,10 @@ fn cmd_new(name: &str) -> Result<()> {
         fs::write(&lib_rs, content)?;
     }
 
-    println!("  Created Velo app '{}' at {}", name, target_dir.display());
+    println!("  Created veloasm app '{}' at {}", name, target_dir.display());
     println!("  Next steps:");
     println!("    cd examples/{}", name);
-    println!("    velo dev");
+    println!("    veloasm dev");
     Ok(())
 }
 
@@ -94,7 +94,7 @@ fn cmd_dev(name: Option<&str>) -> Result<()> {
     let index = dir.join("index.html");
     if !index.exists() {
         anyhow::bail!(
-            "No index.html found in {}. Are you in a Velo project?",
+            "No index.html found in {}. Are you in a veloasm project?",
             dir.display()
         );
     }
@@ -120,7 +120,7 @@ fn cmd_build(name: Option<&str>) -> Result<()> {
     let index = dir.join("index.html");
     if !index.exists() {
         anyhow::bail!(
-            "No index.html found in {}. Are you in a Velo project?",
+            "No index.html found in {}. Are you in a veloasm project?",
             dir.display()
         );
     }
@@ -150,7 +150,7 @@ fn resolve_example_dir(name: Option<&str>) -> Result<PathBuf> {
 }
 
 fn workspace_root() -> Result<PathBuf> {
-    // CARGO_MANIFEST_DIR for velo-cli is crates/velo-cli, so go up two levels.
+    // CARGO_MANIFEST_DIR for veloasm-cli is crates/velo-cli, so go up two levels.
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     Ok(manifest.parent().unwrap().parent().unwrap().to_path_buf())
 }
@@ -169,3 +169,5 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+

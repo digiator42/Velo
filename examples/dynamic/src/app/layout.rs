@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[layout]
 pub fn layout(child: DomNode) -> DomNode {
@@ -14,3 +14,4 @@ pub fn layout(child: DomNode) -> DomNode {
         </div>
     }
 }
+

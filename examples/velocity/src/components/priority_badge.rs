@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// A priority pill rendered with `class_names!` so the CSS class is derived
 /// from the task's priority variant (High/Medium/Low).
@@ -18,3 +18,4 @@ pub fn PriorityBadge(priority: crate::api::Priority) -> DomNode {
         <span class={ class_names!("badge", class) }>{ label.to_string() }</span>
     }
 }
+

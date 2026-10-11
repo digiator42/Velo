@@ -1,5 +1,5 @@
 [package]
-name = "velo"
+name = "veloasm"
 version = "0.1.0"
 edition = "2021"
 description = "The unified, high-performance fine-grained reactive full-stack web framework."
@@ -9,7 +9,9 @@ keywords = ["wasm", "reactive", "frontend", "dom", "web"]
 categories = ["wasm", "web-programming"]
 
 [dependencies]
-velo_macro = { path = "../macro" }
+# `version` is retained so publishing still works (the path is stripped on
+# `cargo publish`; the macro crate must be published first/in tandem).
+velo_macro = { version = "0.1.0", path = "../macro" }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
@@ -21,7 +23,7 @@ serde_json = { workspace = true, optional = true }
 [features]
 # Typed `fetch_json::<T>(url)` / `response.json::<T>()` via serde JSON parsing.
 # Off by default to keep the WASM core small; enable it only when you need
-# typed payload decoding from the `velo::fetch` wrapper.
+# typed payload decoding from the `veloasm::fetch` wrapper.
 json = ["serde", "serde_json", "wasm-bindgen/serde-serialize"]
 
 [dependencies.web-sys]
@@ -97,3 +99,5 @@ features = [
     "File",
     "FileList",
 ]
+
+

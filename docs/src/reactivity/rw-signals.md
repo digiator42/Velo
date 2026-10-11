@@ -1,6 +1,6 @@
 # `RwSignal` & Ergonomic Handles
 
-When managing local state that is both read and written in multiple closures, splitting handles into `(ReadSignal, WriteSignal)` can lead to variable bookkeeping. Velo provides `RwSignal<T>` and the `signal!` macro for zero-boilerplate state.
+When managing local state that is both read and written in multiple closures, splitting handles into `(ReadSignal, WriteSignal)` can lead to variable bookkeeping. veloasm provides `RwSignal<T>` and the `signal!` macro for zero-boilerplate state.
 
 ---
 
@@ -9,7 +9,7 @@ When managing local state that is both read and written in multiple closures, sp
 `signal!(initial_value)` returns an `RwSignal<T>` combining both read and write capabilities in a single handle:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let count = signal!(0);
 
@@ -45,7 +45,7 @@ view! {
 
 ## 3. Two-Way Form Binding with `RwSignal`
 
-`RwSignal` seamlessly connects to Velo's two-way form bindings:
+`RwSignal` seamlessly connects to veloasm's two-way form bindings:
 
 ```rust
 let query = signal!(String::new());
@@ -56,3 +56,4 @@ view! {
 ```
 
 When the user types into the `<input>`, `query` updates automatically; when `query.set(...)` is called in code, the `<input>` element immediately reflects the new value.
+

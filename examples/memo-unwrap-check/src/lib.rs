@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::*;
 
 /// Compile-check: a `Memo<u32>` must auto-unwrap inside `view! { { memo } }`
@@ -27,3 +27,4 @@ pub fn main() {
     // The new mount() is fine for this check — no wrapper issues to test here.
     mount(app);
 }
+

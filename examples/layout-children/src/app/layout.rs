@@ -1,4 +1,4 @@
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 /// Root layout — a persistent shell around every route. The routed leaf
 /// arrives as `child` (this is component `children` at the route level) and is

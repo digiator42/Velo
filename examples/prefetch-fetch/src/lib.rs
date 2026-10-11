@@ -1,5 +1,5 @@
-//! `examples/prefetch-fetch` — exercises Velo's JS-style `fetch` helpers:
-//! `velo::fetch`, `fetch_json::<T>`, and the `<Link prefetch />` prop that
+//! `examples/prefetch-fetch` — exercises veloasm's JS-style `fetch` helpers:
+//! `veloasm::fetch`, `fetch_json::<T>`, and the `<Link prefetch />` prop that
 //! warms a destination's payload on hover/focus.
 //!
 //! ```text
@@ -18,7 +18,7 @@
 //! swap `USERS_URL` for your own endpoint.
 
 use serde::Deserialize;
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Public test endpoint. In a real app this would be your own route data URL —
@@ -41,7 +41,7 @@ struct User {
 pub fn home_page() -> DomNode {
     view! {
         <div>
-            <h1>"Velo prefetch + fetch"</h1>
+            <h1>"veloasm prefetch + fetch"</h1>
             <p>"Hover or tab-focus the nav link below, then open the DevTools Network tab."</p>
             <p class="hint">
                 "The link has "
@@ -71,7 +71,7 @@ fn user_card(user: &User) -> DomNode {
 #[route("/users")]
 pub fn users_page() -> DomNode {
     let resource = create_resource(|| async move {
-        velo::fetch_json::<Vec<User>>(USERS_URL).await
+        veloasm::fetch_json::<Vec<User>>(USERS_URL).await
     });
 
 
@@ -121,4 +121,5 @@ pub fn main() {
     };
     mount(app);
 }
+
 

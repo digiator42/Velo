@@ -12,7 +12,7 @@ function with `#[error]`:
 
 ```rust
 // src/app/error.rs  (or src/app/<segment>/error.rs)
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[error]
 pub fn error() -> DomNode {
@@ -35,7 +35,7 @@ anywhere inside that page's rendering is caught and replaced by the **nearest**
 ## 2. How a fault is raised
 
 On `wasm32-unknown-unknown`, `panic = "abort"` means real `panic!`s can't be
-unwound — a panic simply aborts the instance. So Velo provides an
+unwound — a panic simply aborts the instance. So veloasm provides an
 **app-level fault signal** that flags the current boundary'd subtree as failed
 without needing unwinding:
 
@@ -43,7 +43,7 @@ without needing unwinding:
 #[page]
 pub fn page() -> DomNode {
     if thing_failed() {
-        velo::boundary_fault("the underlying service is down")
+        veloasm::boundary_fault("the underlying service is down")
     } else {
         view! { <div>"All good."</div> }
     }
@@ -62,10 +62,10 @@ When you're not using `app!`, or you want a boundary around a specific subtree,
 call `error_boundary` directly:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 let fallback = view! { <div class="error-fallback">"Something went wrong."</div> };
-let subtree = velo::error_boundary(fallback, Box::new(|| {
+let subtree = veloasm::error_boundary(fallback, Box::new(|| {
     view! { <Dashboard /> }
 }));
 ```

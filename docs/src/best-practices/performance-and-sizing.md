@@ -1,6 +1,6 @@
 # Performance & WASM Binary Size
 
-Velo is engineered for instant load times and tiny binary footprints.
+veloasm is engineered for instant load times and tiny binary footprints.
 
 ---
 
@@ -33,8 +33,9 @@ Trunk will run `wasm-opt` automatically if installed, shrinking the WebAssembly 
 
 ## 3. High-Frequency State Updates
 
-Because Velo avoids Virtual DOM diffing, it can handle thousands of reactive updates per second without blocking the main browser thread.
+Because veloasm avoids Virtual DOM diffing, it can handle thousands of reactive updates per second without blocking the main browser thread.
 
 To perform rapid mutations efficiently:
 * Use `batch(|| { ... })` to synchronize multiple signal updates into a single notification.
 * Use `SignalVec::with_mut(|| { ... })` for bulk collection mutations.
+

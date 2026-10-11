@@ -15,10 +15,10 @@ src/app/page.rs
 **`src/lib.rs`** — app root with `app!` routing:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();
+veloasm::app!();
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -28,7 +28,7 @@ pub fn main() {
 pub fn run_app() {
     let shell = view! {
         <div id="app">
-            <Router routes={ velo_app::routes() } />
+            <Router routes={ veloasm_app::routes() } />
         </div>
     };
     mount(shell);
@@ -38,14 +38,14 @@ pub fn run_app() {
 **`src/app/page.rs`** — the `"/"` page:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
     let count = signal!(0);
     view! {
         <div class="counter-container">
-            <h1>"Velo Counter"</h1>
+            <h1>"veloasm Counter"</h1>
             <div class="display">
                 <span class="value">{ count }</span>
             </div>
@@ -75,14 +75,14 @@ read/write handles.
 If you don't need routing at all, mount a tree directly and skip `app!`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 fn app() -> DomNode {
     let count = signal!(0);
     view! {
         <div class="counter-container">
-            <h1>"Velo Counter"</h1>
+            <h1>"veloasm Counter"</h1>
             <div class="display"><span class="value">{ count }</span></div>
             <div class="controls">
                 <button on:click={ move |_| count.update(|c| *c += 1) }>"+"</button>
@@ -104,3 +104,4 @@ pub fn main() {
 ```bash
 trunk serve --watch --open
 ```
+

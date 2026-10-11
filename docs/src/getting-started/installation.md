@@ -1,6 +1,6 @@
 # Installation & Toolchain Setup
 
-To develop WebAssembly applications with Velo, you will need the standard Rust toolchain with the `wasm32-unknown-unknown` target, and [Trunk](https://trunkrs.dev) as the development server and build tool.
+To develop WebAssembly applications with veloasm, you will need the standard Rust toolchain with the `wasm32-unknown-unknown` target, and [Trunk](https://trunkrs.dev) as the development server and build tool.
 
 ---
 
@@ -39,13 +39,13 @@ trunk --version
 
 ---
 
-## 3. Adding Velo to Your Project
+## 3. Adding veloasm to Your Project
 
-In your `Cargo.toml`, configure the crate type to `cdylib` and add `velo` as a dependency:
+In your `Cargo.toml`, configure the crate type to `cdylib` and add `veloasm` as a dependency:
 
 ```toml
 [package]
-name = "my-velo-app"
+name = "my-veloasm-app"
 version = "0.1.0"
 edition = "2021"
 
@@ -53,7 +53,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-velo = { version = "0.1.0" } # Or path = "../crates/velo"
+veloasm = { version = "0.1.0" } # Or path = "../crates/velo"
 wasm-bindgen = "0.2"
 web-sys = "0.3"
 ```
@@ -69,3 +69,5 @@ lto = true        # Enable Link-Time Optimization
 codegen-units = 1 # Maximize optimization units
 panic = "abort"   # Strip panic formatting strings
 ```
+
+

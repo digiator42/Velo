@@ -1,13 +1,13 @@
 # Router & Route Configuration
 
-Velo's recommended routing is **file-based** via the `app!` macro. A lightweight
+veloasm's recommended routing is **file-based** via the `app!` macro. A lightweight
 manual `Route` table still works for small SPAs that don't want `src/app/`.
 
 ---
 
 ## 1. File-Based Routing with `app!`
 
-Drop the line `velo::app!();` at the top of `src/lib.rs`, create your pages
+Drop the line `veloasm::app!();` at the top of `src/lib.rs`, create your pages
 under `src/app/`, and let the macro turn them into routes:
 
 ```text
@@ -21,10 +21,10 @@ src/app/
 
 ```rust
 // src/lib.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-velo::app!();                        // scan src/app/ + build routes
+veloasm::app!();                        // scan src/app/ + build routes
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -39,7 +39,7 @@ pub fn run_app() {
                 <Link to={ route_path!("/about") } label="About" />
             </nav>
             <main>
-                <Router routes={ velo_app::routes() } />
+                <Router routes={ veloasm_app::routes() } />
             </main>
         </div>
     };
@@ -51,7 +51,7 @@ Each page is just a function in its own file:
 
 ```rust
 // src/app/about/page.rs
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 #[page]
 pub fn page() -> DomNode {
@@ -76,7 +76,7 @@ When you don't use `app!` (a single-page widget, or an early prototype), define
 routes with the `routes!` macro or a `Vec<Route>`:
 
 ```rust
-use velo::prelude::*;
+use veloasm::prelude::*;
 
 fn home_page() -> DomNode {
     view! { <h1>"Home Page"</h1> }
@@ -100,7 +100,7 @@ let routes = routes! {
 The equivalent manual vector:
 
 ```rust
-use velo::Route;
+use veloasm::Route;
 
 let routes = vec![
     Route { path: "/",            component: home_page },
@@ -118,7 +118,7 @@ let routes = vec![
 ## 3. Mounting the `<Router>`
 
 Pass the route list to `<Router routes={ ... } />`. With `app!`, hand it
-`velo_app::routes()`; with a manual table, hand it your `routes!`/`Vec<Route>`:
+`veloasm_app::routes()`; with a manual table, hand it your `routes!`/`Vec<Route>`:
 
 ```rust
 let app_shell = view! {
@@ -152,3 +152,4 @@ When navigating to a URL, the router evaluates each pattern and renders the
 first matching component. With `app!`, this table is derived from your
 `src/app/` folder structure, and dynamic parameters come from `[param]` folders
 (e.g. `posts/[slug]/page.rs` → `/posts/:slug`).
+
