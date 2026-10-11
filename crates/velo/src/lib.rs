@@ -1480,6 +1480,12 @@ impl RequestBuilder {
         self
     }
 
+    /// Finish building and return the URL string without sending — for APIs
+    /// like `EventSource` that take a URL but can't go through `send()`.
+    pub fn url(self) -> String {
+        self.url
+    }
+
     /// JSON body: serializes `value` and sets `content-type: application/json`.
     /// Requires the `json` feature.
     #[cfg(feature = "json")]
