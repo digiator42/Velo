@@ -23,7 +23,7 @@ pub struct AppState {
 pub fn TaskRow(task: Task) {
     let state = use_context::<AppState>().expect("AppState must be provided at root");
     let id = task.id;
-    let tasks = state.tasks.clone();
+    let tasks = state.tasks;
 
     view! {
         <div class:done={ task.done } class="task-row">

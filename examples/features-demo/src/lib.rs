@@ -38,17 +38,15 @@ fn roster_page() -> DomNode {
         },
     ]);
 
-    let users_for_btn = users.clone();
-    let users_for_btn2 = users.clone();
     let next_id = std::cell::Cell::new(4u32);
 
     view! {
         <div class="page">
             <h2>"Roster (keyed list)"</h2>
-            <button on:click={ move |_| { web_sys::console::log_1(&"PROBE roster-add clicked".into()); let id = next_id.get(); next_id.set(id + 1); users_for_btn.push(User { id, name: "New".into() }); } }>
+            <button on:click={ move |_| { web_sys::console::log_1(&"PROBE roster-add clicked".into()); let id = next_id.get(); next_id.set(id + 1); users.push(User { id, name: "New".into() }); } }>
                 "Add"
             </button>
-            <button on:click={ move |_| { users_for_btn2.remove(0); } }>
+            <button on:click={ move |_| { users.remove(0); } }>
                 "Remove first"
             </button>
 
@@ -76,17 +74,12 @@ fn theme_page() -> DomNode {
     let theme = use_context::<Theme>().expect("Theme context must be provided");
     let dark = theme.dark;
     // Derive a reactive color string from the boolean signal.
-    let color = create_memo({
-        let d = dark.clone();
-        move || if d.get() { "orangered".to_string() } else { "teal".to_string() }
-    });
-    let dark_toggle = dark.clone();
-    let dark_click = dark.clone();
+    let color = create_memo(move || if dark.get() { "orangered".to_string() } else { "teal".to_string() });
 
     view! {
-        <div class:dark={ dark_toggle } class="page">
+        <div class:dark={ dark } class="page">
             <h2>"Theme (class: + style: toggles + context)"</h2>
-            <button on:click={ move |_| dark_click.set(!dark_click.get()) }>
+            <button on:click={ move |_| dark.set(!dark.get()) }>
                 "Toggle theme"
             </button>
             // Reactive inline style bound to a derived signal.
@@ -112,23 +105,17 @@ fn async_page() -> DomNode {
         42u32
     });
 
-    // The loading predicate and the content's `{ value }` are each captured by
-    // their own `move` closure, so clone the resource handle for each use.
-    let susp_loading = resource.clone();
-    let susp_value = resource.clone();
-    let show_loading = resource.clone();
-    let show_value = resource.clone();
-
+    // `Resource` is `Copy`: the one handle moves into every closure below.
     view! {
         <div class="page">
             <h2>"Async data (create_resource + Suspense/Show)"</h2>
-            <Suspense loading={ susp_loading.loading() }
+            <Suspense loading={ resource.loading() }
                       fallback={ view!{ <p class="muted">"Suspense: loading…"</p> } }>
-                <p>"Suspense: loaded value = " { susp_value.value().unwrap_or(0) }</p>
+                <p>"Suspense: loaded value = " { resource.value().unwrap_or(0) }</p>
             </Suspense>
-            <Show when={ !show_loading.loading() }
+            <Show when={ !resource.loading() }
                   fallback={ view!{ <em>"Show: still loading…"</em> } }>
-                <p>"Show: value = " { show_value.value().unwrap_or(0) }</p>
+                <p>"Show: value = " { resource.value().unwrap_or(0) }</p>
             </Show>
         </div>
     }
@@ -142,7 +129,7 @@ fn ThemeBadge() {
     view! {
         <div class="badge">
             {
-                move || match theme.clone() {
+                move || match &theme {
                     Some(t) => DomNode::text(if t.dark.get() { "Dark mode on" } else { "Light mode on" }),
                     None => DomNode::text("No theme in context"),
                 }
@@ -160,7 +147,7 @@ fn ThemeBadge() {
 fn Panel(title: String, children: Vec<DomNode>) {
     view! {
         <div class="panel">
-            <h3 class="panel-title">{ title.clone() }</h3>
+            <h3 class="panel-title">{ title }</h3>
             <div class="panel-body">{ children }</div>
         </div>
     }

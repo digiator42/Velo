@@ -26,7 +26,6 @@ fn show_secret(details: bool) -> DomNode {
 // A reactive version reading from a signal. The closure is auto-wrapped by the
 // view! macro via `render_expression` (requires `DomNode: RenderDynamic`).
 fn reactive_secret(details: RwSignal<bool>) -> DomNode {
-    let details = details.clone();
     view! {
         { move || {
             if details.get() {
@@ -51,25 +50,20 @@ fn macro_demo() -> DomNode {
     let count = signal!(0);
     let config: Option<AppConfig> = context!();
 
-    let tracking_count = count.clone();
     effect!(move || {
         // Tracks `count`; the read establishes the reactive dependency so the
         // effect reruns whenever the signal changes.
-        let _ = tracking_count.get();
+        let _ = count.get();
     });
 
-    let cleanup_lifecycle = {
-        let count_a = count.clone();
-        let count_b = count.clone();
-        (
-            move || {
-                let _ = count_a.get();
-            },
-            move || {
-                let _ = count_b.get();
-            },
-        )
-    };
+    let cleanup_lifecycle = (
+        move || {
+            let _ = count.get();
+        },
+        move || {
+            let _ = count.get();
+        },
+    );
     // The two-arg form runs `create_effect_with_cleanup`. Dropping the handle
     // (immediately here) runs the cleanup while the effect is being disposed.
     effect!(cleanup_lifecycle.0, cleanup_lifecycle.1);
@@ -87,10 +81,7 @@ fn macro_demo() -> DomNode {
         </p>
     };
 
-    let inc = {
-        let count = count.clone();
-        move || count.set(count.get() + 1)
-    };
+    let inc = move || count.set(count.get() + 1);
 
     view! {
         <div>

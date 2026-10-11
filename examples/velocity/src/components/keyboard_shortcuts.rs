@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 #[component]
 pub fn KeyboardShortcuts() -> DomNode {
     let theme = use_context::<crate::ThemeState>().expect("theme context");
-    let is_dark = theme.dark.clone();
+    let is_dark = theme.dark;
 
     // `effect!` with a cleanup: the listener is attached once (when the effect
     // first runs) and detached exactly once when the effect is disposed.

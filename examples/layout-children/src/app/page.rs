@@ -22,7 +22,6 @@ pub fn page() -> DomNode {
         },
     ]);
     let next_id = signal!(3);
-    let feed_for_btn = feed.clone();
 
     view! {
         <div class="page">
@@ -45,7 +44,7 @@ pub fn page() -> DomNode {
             <button class="add-post" on:click={ move |_| {
                 let id = next_id.get();
                 next_id.set(id + 1);
-                feed_for_btn.push(Post {
+                feed.push(Post {
                     id,
                     title: format!("Reactive post #{id}"),
                     author: "feed".into(),

@@ -8,7 +8,7 @@ use velo::prelude::*;
 #[component]
 pub fn ThemeToggle() -> DomNode {
     let theme = use_context::<crate::ThemeState>().expect("theme context");
-    let is_dark = theme.dark.clone();
+    let is_dark = theme.dark;
 
     view! {
         <button class="theme-toggle"

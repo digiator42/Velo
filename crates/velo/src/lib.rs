@@ -903,10 +903,20 @@ where
 /// closures. The backing effect is owned by the enclosing scope when created
 /// inside one (torn down with its owner), and retained for the app lifetime
 /// otherwise — the same rule as [`effect!`].
-#[derive(Clone, Copy)]
 pub struct Memo<T> {
     read: ReadSignal<T>,
 }
+
+// Unconditional: the handle is `Copy` for every `T` (only the *value* needs
+// `Clone` to be read). A `#[derive(Copy)]` would wrongly condition this on
+// `T: Copy`, breaking `Memo<Vec<…>>` and friends.
+impl<T> Clone for Memo<T> {
+    fn clone(&self) -> Self {
+        Self { read: self.read }
+    }
+}
+
+impl<T> Copy for Memo<T> {}
 
 impl<T: Clone + 'static> Deref for Memo<T> {
     type Target = ReadSignal<T>;
@@ -1163,11 +1173,17 @@ macro_rules! effect {
 }
 
 /// A reactive handle for async data.
+/// A reactive handle for async data. Like every other reactive handle it is
+/// `Copy`: move it into any number of `move` closures with no `.clone()`.
 #[derive(Clone)]
 pub struct Resource<T: Clone + 'static> {
     loading: Signal<bool>,
     value: Signal<Option<T>>,
 }
+
+// Unconditional within the struct's own bounds (see `Memo`): the handle is
+// `Copy` even for non-`Copy` payloads like `Resource<Vec<User>>`.
+impl<T: Clone + 'static> Copy for Resource<T> {}
 
 impl<T: Clone + 'static> Resource<T> {
     pub fn loading(&self) -> bool {
@@ -3473,6 +3489,20 @@ mod reactivity_tests {
         assert_eq!(*seen.borrow(), vec!["demo".to_string(), "demo".to_string()]);
         // The source is untouched and still usable.
         assert_eq!(app.name, "demo");
+    }
+
+    #[test]
+    fn handles_are_copy_for_non_copy_payloads() {
+        // Compile-time proof: handles stay `Copy` even when `T` is not
+        // (a `#[derive(Copy)]` would only be conditional on `T: Copy`).
+        fn is_copy<T: Copy>() {}
+        is_copy::<Memo<Vec<i32>>>();
+        is_copy::<Resource<Vec<i32>>>();
+        is_copy::<SignalVec<String>>();
+        is_copy::<RwSignal<String>>();
+        is_copy::<ReadSignal<String>>();
+        is_copy::<WriteSignal<String>>();
+        is_copy::<Signal<String>>();
     }
 
     #[test]

@@ -14,7 +14,6 @@ pub fn BoardHeader(project_name: String,
     // Local signal for the quick-add input (distinct from the live search box).
     let new_title = signal!(String::new());
     let on_add_c = on_add.clone();
-    let title_for_submit = new_title.clone();
 
     view! {
         <div class="board-header">
@@ -27,10 +26,10 @@ pub fn BoardHeader(project_name: String,
             </div>
             <div class="quick-add">
                 <form on:submit={ move |_| {
-                    let t = title_for_submit.get().trim().to_string();
+                    let t = new_title.get().trim().to_string();
                     if !t.is_empty() {
                         on_add_c(t);
-                        title_for_submit.set(String::new());
+                        new_title.set(String::new());
                     }
                 } }>
                     <input type="text" placeholder="Type a task and press Enter..." bind:value={ new_title } />
@@ -40,3 +39,4 @@ pub fn BoardHeader(project_name: String,
         </div>
     }
 }
+

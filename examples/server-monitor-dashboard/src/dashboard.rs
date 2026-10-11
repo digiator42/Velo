@@ -16,23 +16,10 @@ pub fn monitor_page() -> DomNode {
     // Manual Interactive Counter Signal
     let manual_clicks = Signal::new(0);
 
-    // Clones for the background streaming interval
-    let c_cpu = cpu_load.clone();
-    let c_mem = memory_usage.clone();
-    let c_conn = active_connections.clone();
-    let i_time = elapsed_time.clone();
-    let c_interval = interval.clone();
-    let s_cpu = cpu_status.clone();
-    let s_mem = mem_status.clone();
-    let s_conn = conn_status.clone();
-
-    // Clones for the interactive manual button click handler
-    let click_counter_view = manual_clicks.clone();
-    let click_counter_action = manual_clicks.clone();
-
+    // `Signal` handles are `Copy`: the originals move into every closure below.
     // Background updates every 50ms (20 updates per second!)
     let mut loop_counter = 0;
-    gloo_timers::callback::Interval::new(c_interval.get(), move || {
+    gloo_timers::callback::Interval::new(interval.get(), move || {
         loop_counter += 1;
 
         let cpu_delta = 35 + (loop_counter % 30);
@@ -42,30 +29,30 @@ pub fn monitor_page() -> DomNode {
         let start_time = js_sys::Date::now();
 
         for _ in 0..1000 {
-            c_cpu.set(cpu_delta);
-            c_mem.set(mem_delta);
-            c_conn.set(conn_delta);
+            cpu_load.set(cpu_delta);
+            memory_usage.set(mem_delta);
+            active_connections.set(conn_delta);
         }
 
         let end_time = js_sys::Date::now();
         let elapsed = end_time - start_time;
 
-        i_time.set(elapsed);
+        elapsed_time.set(elapsed);
 
         if cpu_delta > 60 {
-            s_cpu.set("HIGH LOAD".to_string());
+            cpu_status.set("HIGH LOAD".to_string());
         } else {
-            s_cpu.set("NOMINAL".to_string());
+            cpu_status.set("NOMINAL".to_string());
         }
         if mem_delta > 72 {
-            s_mem.set("WARNING".to_string());
+            mem_status.set("WARNING".to_string());
         } else {
-            s_mem.set("NOMINAL".to_string());
+            mem_status.set("NOMINAL".to_string());
         }
         if conn_delta > 1300 {
-            s_conn.set("PEAK SURGE".to_string());
+            conn_status.set("PEAK SURGE".to_string());
         } else {
-            s_conn.set("STABLE".to_string());
+            conn_status.set("STABLE".to_string());
         }
     })
     .forget();
@@ -79,11 +66,11 @@ pub fn monitor_page() -> DomNode {
                 <div class="interactive-zone">
                     <button class="btn-action" on:click={ move |_| {
                         // Directly mutate manual clicks on a completely separate signal branch
-                        click_counter_action.set(click_counter_action.get() + 1);
+                        manual_clicks.set(manual_clicks.get() + 1);
                     } }>
                         "Smash to Test Responsiveness"
                     </button>
-                    <span class="counter-value">{ click_counter_view.get() }</span>
+                    <span class="counter-value">{ manual_clicks.get() }</span>
                 </div>
 
                 <div class="test-label">
@@ -103,7 +90,7 @@ pub fn monitor_page() -> DomNode {
                 <h2>"Performance Inspection"</h2>
                 <p>"The elapsed time for the 1000 rapid state updates in the background loop is: "
                 <span class="elapsed-time">{ elapsed_time.get() }</span> " milliseconds, with interval: "
-                <span class="interval">{ c_interval.get() }</span> " ms."</p>
+                <span class="interval">{ interval.get() }</span> " ms."</p>
             </div>
 
             <p class="inspection-note">

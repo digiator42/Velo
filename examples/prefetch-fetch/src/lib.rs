@@ -74,8 +74,7 @@ pub fn users_page() -> DomNode {
         velo::fetch_json::<Vec<User>>(USERS_URL).await
     });
 
-    let susp_loading = resource.clone();
-    let susp_value = resource.clone();
+
 
     view! {
         <div>
@@ -85,9 +84,9 @@ pub fn users_page() -> DomNode {
                 <code>"fetch_json::<Vec<User>>(USERS_URL)"</code>
                 ". If you prefetched this link, it resolves from the HTTP cache."
             </div>
-            <Suspense loading={ susp_loading.loading() }
+            <Suspense loading={ resource.loading() }
                       fallback={ view! { <p class="muted">"Loading users…"</p> } }>
-                { move || match susp_value.value() {
+                { move || match resource.value() {
                     Some(Ok(users)) => {
                         let list = users.iter().map(user_card).collect::<Vec<_>>();
                         view! { <ul>{ list }</ul> }
@@ -122,3 +121,4 @@ pub fn main() {
     };
     mount(app);
 }
+

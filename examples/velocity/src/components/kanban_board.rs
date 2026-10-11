@@ -18,7 +18,7 @@ pub fn KanbanBoard(
             { for col in columns key = |c: &crate::api::Column| c.id.clone() {
                 <KanbanColumn
                     column={ col.clone() }
-                    grouped={ grouped.clone() }
+                    grouped={ grouped }
                     on_task_open={ on_open.clone() } />
             } }
         </div>

@@ -29,8 +29,8 @@ fn monitor() -> DomNode {
     view! {
         <div class="page text-center">
             <h1>"Cluster Node Analytics Room"</h1>
-            <p>"Monitoring Group Pipeline ID: " { cluster_id.clone() }</p>
-            <p>"Live Streaming Endpoint Node: " { node_id.clone() }</p>
+            <p>"Monitoring Group Pipeline ID: " { cluster_id }</p>
+            <p>"Live Streaming Endpoint Node: " { node_id }</p>
         </div>
     }
 }

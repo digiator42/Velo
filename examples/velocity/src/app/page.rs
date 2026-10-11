@@ -23,21 +23,12 @@ pub fn page() -> DomNode {
         MockApi::activities()
     });
 
-    // `loading()` is consumed inside `<Suspense>`'s reactive predicate closure,
-    // so hand each resource a dedicated clone for that role (Resource is cheap
-    // to clone / Rc-backed). Same for `value()` used in the stats match blocks.
-    let projects_loading = projects.clone();
-    let stats_loading_overview = stats.clone();
-    let stats_loading_chart = stats.clone();
-    let activities_loading = activities.clone();
-    let stats_value_overview = stats.clone();
-    let stats_value_chart = stats.clone();
-
+    // `Resource` and `Memo` are `Copy`: the originals move into every
+    // reactive closure below with no clones.
     // ---- Live search: signal! + memo! (filtered count + results recomputes on type) ----
     let search = signal!(String::new());
-    let proj_for_filter = projects.clone();
     let filtered_tasks = memo!(move || {
-        let p = proj_for_filter.value();
+        let p = projects.value();
         if let Some(projects) = p {
             let q = search.get().to_lowercase();
             if q.is_empty() {
@@ -57,8 +48,7 @@ pub fn page() -> DomNode {
             Vec::new()
         }
     });
-    let filtered_count_tasks = filtered_tasks.clone();
-    let filtered_count = memo!(move || filtered_count_tasks.get().len());
+    let filtered_count = memo!(move || filtered_tasks.get().len());
 
     view! {
         <div class="dashboard">
@@ -66,9 +56,9 @@ pub fn page() -> DomNode {
             <h1>"Dashboard"</h1>
             <p class="subtitle">"Overview of all your projects and recent activity."</p>
 
-            <Suspense loading={ move || projects_loading.loading() }
+            <Suspense loading={ move || projects.loading() }
                       fallback={ view! { <div class="loading">"Loading projects…"</div> } }>
-                <ProjectsSection projects={ projects.clone() } />
+                <ProjectsSection projects={ projects } />
             </Suspense>
 
             <div class="search-bar">
@@ -94,9 +84,9 @@ pub fn page() -> DomNode {
                 view! { <div class="search-results activity-feed">{ items }</div> }
             } }
 
-            <Suspense loading={ move || stats_loading_overview.loading() }
+            <Suspense loading={ move || stats.loading() }
                       fallback={ view! { <div class="loading">"Loading stats…"</div> } }>
-                { move || match stats_value_overview.value() {
+                { move || match stats.value() {
                     Some(s) => view! {
                         <div class="stats-grid">
                             <StatsCard label="Projects" value={ s.projects as i64 } />
@@ -110,14 +100,14 @@ pub fn page() -> DomNode {
                 } }
             </Suspense>
 
-            <Suspense loading={ move || stats_loading_chart.loading() }
+            <Suspense loading={ move || stats.loading() }
                       fallback={ view! { <div class="loading">"Loading chart…"</div> } }>
-                { move || match stats_value_chart.value() {
+                { move || match stats.value() {
                     Some(s) => {
                         let chart_node = use_dynamic(
                             move || async move {
                                 velo::sleep(900).await;
-                                view! { <Chart stats={ s.clone() } /> }
+                                view! { <Chart stats={ s } /> }
                             },
                             view! { <div class="chart placeholder">"Loading chart…"</div> },
                         );
@@ -127,9 +117,9 @@ pub fn page() -> DomNode {
                 } }
             </Suspense>
 
-            <Suspense loading={ move || activities_loading.loading() }
+            <Suspense loading={ move || activities.loading() }
                       fallback={ view! { <div class="loading">"Loading activity…"</div> } }>
-                <ActivitySection activities={ activities.clone() } />
+                <ActivitySection activities={ activities } />
             </Suspense>
 
             <KeyboardShortcuts />
@@ -163,12 +153,11 @@ fn ProjectsSection(projects: velo::Resource<Vec<crate::api::Project>>) -> DomNod
 /// Renders the activity feed once the activities resource resolves.
 #[component]
 fn ActivitySection(activities: velo::Resource<Vec<crate::api::Activity>>) -> DomNode {
-    let acts = activities.clone();
     view! {
         <div>
             <h2>"Recent Activity"</h2>
             { move || {
-                let a = acts.value();
+                let a = activities.value();
                 match a {
                     Some(list) if !list.is_empty() => {
                         let list_sv = velo::signal_vec(list);

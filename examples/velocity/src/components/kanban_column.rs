@@ -23,9 +23,7 @@ pub fn KanbanColumn(
             .map(|(_, ts)| ts)
             .unwrap_or_default()
     });
-    let count_src = tasks_memo.clone();
-    let count = memo!(move || count_src.get().len());
-    let list_src = tasks_memo.clone();
+    let count = memo!(move || tasks_memo.get().len());
     let on_open = on_task_open.clone();
     view! {
         <div class="kanban-column">
@@ -34,7 +32,7 @@ pub fn KanbanColumn(
                 <span class="column-count">{ count }</span>
             </div>
             { move || {
-                let tasks = list_src.get();
+                let tasks = tasks_memo.get();
                 tasks.into_iter().map(|t| {
                     view! { <TaskCard task={ t } on_open={ on_open.clone() } /> }
                 }).collect::<Vec<_>>()

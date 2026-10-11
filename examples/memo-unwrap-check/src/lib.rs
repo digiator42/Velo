@@ -6,17 +6,13 @@ use wasm_bindgen::prelude::*;
 /// Memo` impl or the `signal_value!` usage path is broken.
 fn memo_unwrap_page() -> DomNode {
     let (base, _set_base) = create_signal(42u32);
-    let doubled = create_memo({
-        let b = base.clone();
-        move || b.get() * 2
-    });
+    let doubled = create_memo(move || base.get() * 2);
 
-    // `doubled` is used once in the view below, so the macro's `move ||`
-    // closure is the sole consumer — no move conflicts.
+    // `doubled` is `Copy`, so the macro's `move ||` closure moves it freely.
     view! {
         <div>
             // plain memo auto-unwrap in text position — MUST compile
-            <p class="memo-check">"doubled = " { doubled.clone() }</p>
+            <p class="memo-check">"doubled = " { doubled }</p>
         </div>
     }
 }

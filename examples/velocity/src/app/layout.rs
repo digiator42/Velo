@@ -11,13 +11,13 @@ use crate::components::*;
 pub fn layout(child: DomNode) -> DomNode {
     let theme = use_context::<crate::ThemeState>().expect("theme context");
     let auth = use_context::<crate::AuthState>().expect("auth context");
-    let is_dark = theme.dark.clone();
-    let collapsed = theme.collapsed.clone();
+    let is_dark = theme.dark;
+    let collapsed = theme.collapsed;
 
     let _current = FRouter::use_route();
 
     view! {
-        <div class="app-shell" class:dark={ is_dark.get() } class:collapsed={ collapsed.get() }>
+        <div class="app-shell" class:dark={ is_dark } class:collapsed={ collapsed }>
             <aside class="sidebar">
                 <div class="brand">"Velocity"</div>
                 <nav class="nav">

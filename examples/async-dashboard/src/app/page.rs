@@ -12,16 +12,15 @@ pub fn page() -> DomNode {
         42u32
     });
 
-    let susp_loading = resource.clone();
-    let susp_value = resource.clone();
+
 
     view! {
         <div class="page">
             <h1>"Dashboard"</h1>
             <div class="card">
-                <Suspense loading={ susp_loading.loading() }
+                <Suspense loading={ resource.loading() }
                           fallback={ view!{ <p class="muted">"Loading stats…"</p> } }>
-                    <p>"Health score = " { susp_value.value().unwrap_or(0) } " / 100"</p>
+                    <p>"Health score = " { resource.value().unwrap_or(0) } " / 100"</p>
                 </Suspense>
             </div>
             <Link to={ paths::BROKEN } label="Open the broken subtree" />

@@ -25,15 +25,11 @@ fn tasks_page() -> DomNode {
     let s_add = state.clone();
 
     // Derived, reactive stats from the list (recompute only on change).
-    let total = memo({ let t = state.tasks.clone(); move || t.get().len() as u32 });
-    let open = memo({
-        let t = state.tasks.clone();
-        move || t.get().iter().filter(|x| !x.done).count() as u32
-    });
-    let done = memo({
-        let t = state.tasks.clone();
-        move || t.get().iter().filter(|x| x.done).count() as u32
-    });
+    // `tasks` is a `Copy` handle, so it moves straight into each memo.
+    let tasks = state.tasks;
+    let total = memo!(move || tasks.get().len() as u32);
+    let open = memo!(move || tasks.get().iter().filter(|x| !x.done).count() as u32);
+    let done = memo!(move || tasks.get().iter().filter(|x| x.done).count() as u32);
 
     let st_for = state.clone();
 
@@ -94,10 +90,7 @@ fn tasks_page() -> DomNode {
 fn stats_page() -> DomNode {
     let state = use_context::<AppState>().expect("AppState must be provided at root");
 
-    let open_titles = memo({
-        let t = state.tasks.clone();
-        move || t.get().iter().filter(|x| !x.done).map(|x| x.title.clone()).collect::<Vec<_>>()
-    });
+    let open_titles = memo!(move || state.tasks.get().iter().filter(|x| !x.done).map(|x| x.title.clone()).collect::<Vec<_>>());
 
     view! {
         <div class="page">
