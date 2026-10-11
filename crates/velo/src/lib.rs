@@ -703,6 +703,9 @@ where
 
 /// A reactive `Vec`. Mutations notify subscribers, which can read the current
 /// length/items and re-render efficiently (the DOM layer reconciles by key).
+///
+/// Like every other reactive handle, `SignalVec` is `Copy` — move it into any
+/// number of `move` closures with no `.clone()` boilerplate.
 pub struct SignalVec<T> {
     inner: SignalInner<Vec<T>>,
 }
@@ -795,6 +798,8 @@ impl<T> Clone for SignalVec<T> {
         }
     }
 }
+
+impl<T> Copy for SignalVec<T> {}
 
 // ---------------------------------------------------------------------------
 // Context — dependency injection for components (global / shared state).
@@ -1063,6 +1068,28 @@ macro_rules! signal_vec {
 macro_rules! signal {
     ($value:expr) => {
         $crate::signal($value)
+    };
+}
+
+/// `clone!(name = src, …)` — one-line fan-out clones for `move` closures.
+///
+/// Each `name = src` pair expands to `let name = src.clone();`. Reach for it
+/// when one value must move into several closures and the value is `Clone`
+/// but not `Copy` (your own structs, `String`s, collections).
+///
+/// Reactive handles never need this — `RwSignal`, `ReadSignal`,
+/// `WriteSignal`, `Memo`, and `SignalVec` are all `Copy` and move freely:
+///
+/// ```ignore
+/// clone!(app_drop = app, app_browse = app);
+/// // …is exactly…
+/// // let app_drop = app.clone();
+/// // let app_browse = app.clone();
+/// ```
+#[macro_export]
+macro_rules! clone {
+    ($($name:ident = $src:expr),* $(,)?) => {
+        $( let $name = $src.clone(); )*
     };
 }
 
@@ -3259,7 +3286,7 @@ pub mod prelude {
 
     // Re-export primary DOM manipulation types and helpers
     pub use crate::{
-        document, mount, mount_at, mount_to_id, DomNode, RenderDynamic, RootHandle,
+        document, mount, mount_at, DomNode, RenderDynamic, RootHandle,
     };
 
     // Re-export router structures
@@ -3281,7 +3308,7 @@ pub mod prelude {
     // Re-export the shorthand convenience macros. `signal!` shares its name with
     // the `signal` value already re-exported above, so the macro rides along on
     // that single import (macro + value namespaces are both covered by one use).
-    pub use crate::{context, effect, provide};
+    pub use crate::{clone, context, effect, provide};
 
     // Re-export the DX toolkit: timers/debounce, SSE, stream + scroll helpers.
     pub use crate::{debounced, interval, scroll_to_bottom, sse, stream_lines, timeout, LineSplitter};
@@ -3421,6 +3448,50 @@ mod reactivity_tests {
             base,
             "last handle drop did not dispose"
         );
+    }
+
+    #[test]
+    fn clone_macro_fans_out_named_clones() {
+        #[derive(Clone, Debug, PartialEq)]
+        struct Cfg {
+            name: String,
+        }
+        let app = Cfg {
+            name: "demo".to_string(),
+        };
+
+        // One line instead of one `let … = ….clone();` per closure.
+        crate::clone!(app_drop = app, app_browse = app);
+
+        let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen1 = seen.clone();
+        let seen2 = seen.clone();
+        let first = move || seen1.borrow_mut().push(app_drop.name.clone());
+        let second = move || seen2.borrow_mut().push(app_browse.name.clone());
+        first();
+        second();
+        assert_eq!(*seen.borrow(), vec!["demo".to_string(), "demo".to_string()]);
+        // The source is untouched and still usable.
+        assert_eq!(app.name, "demo");
+    }
+
+    #[test]
+    fn reactive_handles_move_without_clone() {
+        // `create_signal` halves, memos, and lists are all `Copy`: the same
+        // handle moves into any number of `move` closures with no clones.
+        let (a, set_a) = create_signal(3i32);
+        let (b, _set_b) = create_signal(4i32);
+        let m = memo!(move || a.get() + b.get());
+        let list = signal_vec(vec![1i32]);
+
+        let sum1 = move || a.get() + m.get() + list.len() as i32;
+        let sum2 = move || {
+            set_a.set(a.get() + 1);
+            a.get() + m.get() + list.len() as i32
+        };
+        assert_eq!(sum1(), 3 + 7 + 1);
+        assert_eq!(sum2(), 4 + 8 + 1);
+        assert_eq!(sum1(), 4 + 8 + 1);
     }
 
     #[test]

@@ -14,12 +14,12 @@
 
 * **Error**: `use of moved value: 'my_value'`
 * **Cause**: Moving a non-`Copy` variable into more than one `move` closure.
-* **Fix**: `RwSignal`, `ReadSignal`, `WriteSignal`, and `Memo` are all `Copy`,
-  so reactive handles move freely — no clone needed. Only `SignalVec` and
-  your own data need a `.clone()` per closure:
+* **Fix**: `RwSignal`, `ReadSignal`, `WriteSignal`, `Memo`, and `SignalVec`
+  are all `Copy`, so reactive handles move freely — no clone needed. Only
+  your own data needs a `.clone()` per closure, which the `clone!` macro
+  compresses to one line:
   ```rust
-  let list_c1 = list.clone();
-  let list_c2 = list.clone();
+  clone!(app_drop = app, app_browse = app);
   ```
 
 ---
