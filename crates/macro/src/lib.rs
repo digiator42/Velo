@@ -330,6 +330,21 @@ impl Parse for VNode {
                         // `on:click={() => set_count.update(|c| c + 1)}` sugar,
                         // expanding to `move |_evt: web_sys::Event| ..` / `move |e| ..`.
                         parse_event_handler_value(&content)?
+                    } else if content.peek(Token![<]) {
+                        // JSX-in-props (React-style): `fallback={ <p>…</p> }`.
+                        // No Rust expression can start with `<`, so this is
+                        // unambiguous. A single node is used as-is; siblings
+                        // are wrapped in a fragment.
+                        let mut nodes = Vec::new();
+                        while !content.is_empty() {
+                            nodes.push(content.parse::<VNode>()?);
+                        }
+                        let node = if nodes.len() == 1 {
+                            nodes.into_iter().next().unwrap()
+                        } else {
+                            VNode::Fragment(nodes)
+                        };
+                        syn::parse2(node.to_token_stream())?
                     } else {
                         content.parse()?
                     }

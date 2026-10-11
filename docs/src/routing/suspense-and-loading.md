@@ -45,19 +45,20 @@ pub fn page() -> DomNode {
         42u32
     });
 
-    let loading = resource.clone();
-    let value = resource.clone();
-
+    // `Resource` is `Copy`: the one handle moves into every closure below.
     view! {
         <div class="page">
-            <Suspense loading={ loading.loading() }
-                      fallback={ view!{ <p class="muted">"Loading stats…"</p> } }>
-                <p>"Health score = " { value.value().unwrap_or(0) } " / 100"</p>
+            <Suspense loading={ resource.loading() }
+                      fallback={ <p class="muted">"Loading stats…"</p> }>
+                <p>"Health score = " { resource.value().unwrap_or(0) } " / 100"</p>
             </Suspense>
         </div>
     }
-}
 ```
+
+> **JSX-in-props:** any prop accepts raw JSX — `fallback={ <p>…</p> }`
+> needs no wrapping `view!{ … }`. Siblings become a fragment
+> (`fallback={ <p>a</p> <p>b</p> }`).
 
 How it works:
 
@@ -80,7 +81,7 @@ content, fallback)` directly for arbitrary two-branch reactive content.
 asynchronously and resolves to heavy content:
 
 ```rust
-<Suspense loading={ r.loading() } fallback={ view! { <p>"Loading…"</p> } }>
+<Suspense loading={ r.loading() } fallback={ <p>"Loading…"</p> }>
     { use_dynamic(|| async {
         velo::sleep(400).await;
         view! { <Chart data={ data } /> }

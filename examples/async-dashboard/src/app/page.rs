@@ -19,7 +19,7 @@ pub fn page() -> DomNode {
             <h1>"Dashboard"</h1>
             <div class="card">
                 <Suspense loading={ resource.loading() }
-                          fallback={ view!{ <p class="muted">"Loading stats…"</p> } }>
+                          fallback={ <p class="muted">"Loading stats…"</p> }>
                     <p>"Health score = " { resource.value().unwrap_or(0) } " / 100"</p>
                 </Suspense>
             </div>
