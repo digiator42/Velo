@@ -11,29 +11,24 @@ use wasm_bindgen::prelude::wasm_bindgen;
 fn counter_page() -> DomNode {
     let (count, set_count) = create_signal(0i32);
 
-    // Clones to move into each closure.
-    let inc = set_count.clone();
-    let dec = set_count.clone();
-    let reset = set_count.clone();
-
     view! {
         <div class="card">
             <h2>"Counter (event-handler arrow sugar)"</h2>
 
             // `() => { .. }` -> `move |_evt: web_sys::Event| { .. }`
-            <button on:click={ async () => { inc.update(|c| *c += 1); } }>
+            <button on:click={ async () => { set_count.update(|c| *c += 1); } }>
                 "Increment"
             </button>
 
             // `() => expr` -> expression-bodied handler
-            <button on:click={ () => dec.update(|c| *c -= 1) }>
+            <button on:click={ () => set_count.update(|c| *c -= 1) }>
                 "Decrement"
             </button>
 
             // `(e) => { .. }` -> `move |e| { .. }` with the event bound to `e`.
             <button on:click={ (e) => {
                 let _ = e.target(); // the web_sys::Event is in scope
-                reset.set(0);
+                set_count.set(0);
             } }>
                 "Reset"
             </button>
@@ -50,25 +45,19 @@ fn counter_page() -> DomNode {
 fn derived_page() -> DomNode {
     let (a, set_a) = create_signal(3i32);
     let (b, _set_b) = create_signal(4i32);
-    let inc_a = set_a.clone();
-
-    // `move` arrows need a fresh clone per closure, exactly like `move || ..`.
-    let a1 = a.clone();
-    let a2 = a.clone();
-    let b2 = b.clone();
 
     view! {
         <div class="card">
             <h2>"Derived values (reactive arrow any-place)"</h2>
 
-            <button on:click={ () => inc_a.update(|v| *v += 1) }>
+            <button on:click={ () => set_a.update(|v| *v += 1) }>
                 "Bump A"
             </button>
 
-            <p>"A = " { () => a1.get() } ", B = 4"</p>
+            <p>"A = " { () => a.get() } ", B = 4"</p>
 
             // Expression-bodied reactive closure.
-            <p>"Product = " { () => a2.get() * b2.get() }</p>
+            <p>"Product = " { () => a.get() * b.get() }</p>
         </div>
     }
 }
