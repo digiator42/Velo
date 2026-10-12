@@ -116,6 +116,23 @@ fn try_parse_reactive_arrow(input: ParseStream) -> Option<Expr> {
     }
 }
 
+/// Parse one `-segment` of a hyphenated attribute name (`stroke-linecap`,
+/// `class:bg-rose-500`, `class:ring-2`, `style:font-size`). Segments may be
+/// identifiers or numbers — CSS utility classes are full of numeric parts.
+/// Anything else is a parse error.
+fn parse_dash_segment(input: ParseStream) -> Result<String> {
+    input.parse::<Token![-]>()?;
+    // Peek via a fork: `LitInt` also matches a leading-`0x` or suffixed
+    // literal (`2xl`), whose exact spelling `to_string()` preserves so the
+    // class name round-trips character-for-character.
+    let fork = input.fork();
+    if fork.parse::<syn::LitInt>().is_ok() {
+        Ok(input.parse::<syn::LitInt>()?.to_string())
+    } else {
+        Ok(input.call(syn::Ident::parse_any)?.to_string())
+    }
+}
+
 /// In reactive prop positions (`when=`, `style:`, `class:active=`, generic
 /// attribute `x={ .. }`) the macro feeds the value through `signal_value!` so a
 /// raw `RwSignal<bool>` / `Memo<_>` auto-unwraps. A user-supplied reactive
@@ -298,11 +315,11 @@ impl Parse for VNode {
             // Use parse_any to allow parsing keywords if they show up as attribute parts
             let mut key = input.call(syn::Ident::parse_any)?.to_string();
 
-            // Loop to catch hyphens (e.g., stroke-linecap or aria-describedby)
+            // Loop to catch hyphens (e.g., stroke-linecap or aria-describedby).
+            // Segments may be numeric (`ring-2` style toggles hit this path
+            // after the `class:`/`style:` split below).
             while input.peek(Token![-]) {
-                input.parse::<Token![-]>()?;
-                let next_part = input.call(syn::Ident::parse_any)?.to_string();
-                key = format!("{}-{}", key, next_part);
+                key = format!("{}-{}", key, parse_dash_segment(input)?);
             }
 
             // Keep your existing namespace colon tracking (e.g., on:click)
@@ -310,11 +327,9 @@ impl Parse for VNode {
                 input.parse::<Token![:]>()?;
                 let mut sub_key = input.call(syn::Ident::parse_any)?.to_string();
                 // Loop to catch hyphens after the colon too
-                // (e.g., class:log-row-selected).
+                // (e.g., class:log-row-selected, class:bg-rose-500).
                 while input.peek(Token![-]) {
-                    input.parse::<Token![-]>()?;
-                    let next_part = input.call(syn::Ident::parse_any)?.to_string();
-                    sub_key = format!("{}-{}", sub_key, next_part);
+                    sub_key = format!("{}-{}", sub_key, parse_dash_segment(input)?);
                 }
                 key = format!("{}:{}", key, sub_key);
             }
