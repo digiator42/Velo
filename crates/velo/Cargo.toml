@@ -1,6 +1,6 @@
 [package]
 name = "veloasm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "The unified, high-performance fine-grained reactive full-stack web framework."
 license = "MIT"
@@ -11,7 +11,7 @@ categories = ["wasm", "web-programming"]
 [dependencies]
 # `version` is retained so publishing still works (the path is stripped on
 # `cargo publish`; the macro crate must be published first/in tandem).
-velo_macro = { version = "0.1.0", path = "../macro" }
+velo_macro = { version = "0.1.1", path = "../macro" }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
