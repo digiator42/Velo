@@ -1482,8 +1482,31 @@ impl RequestBuilder {
 
     /// Finish building and return the URL string without sending — for APIs
     /// like `EventSource` that take a URL but can't go through `send()`.
+    ///
+    /// Note: only the URL travels. Method, headers, and body are dropped,
+    /// so never combine this with `fetch_json`/`post_json` for calls that
+    /// need headers (e.g. `Authorization`) — use [`RequestBuilder::send_json`]
+    /// so everything the builder accumulated is actually sent.
     pub fn url(self) -> String {
         self.url
+    }
+
+    /// Send the request and decode the JSON reply in one step — the terminal
+    /// for header-carrying GETs and POSTs alike. Requires the `json` feature.
+    ///
+    /// ```rust,ignore
+    /// let rules: RulesReply = veloasm::request("/api/v1/firewall/rules")
+    ///     .header("Authorization", &format!("Bearer {token}"))
+    ///     .send_json()
+    ///     .await?;
+    /// ```
+    #[cfg(feature = "json")]
+    pub async fn send_json<T>(self) -> Result<T, FetchError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let text = self.send().await?.text().await?;
+        serde_json::from_str(&text).map_err(|e| FetchError::Decode(e.to_string()))
     }
 
     /// JSON body: serializes `value` and sets `content-type: application/json`.
