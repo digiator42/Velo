@@ -2664,8 +2664,9 @@ const DEV_OVERLAY_JS: &str = r##"(() => {
     msg.id = "veloasm-dev-overlay-msg";
     msg.setAttribute("style", "margin:1rem 1.25rem;white-space:pre-wrap;word-break:break-word;font:0.83rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fbbf24;");
     const foot = document.createElement("div");
+    foot.id = "veloasm-dev-overlay-foot";
     foot.setAttribute("style", "padding:.6rem 1.25rem;border-top:1px solid #1f2937;color:#64748b;font-size:.78rem;");
-    foot.textContent = "veloasm dev overlay \u00b7 full diagnostic (file.rs:line:col) is in the trunk server terminal \u00b7 save the fix and this page reloads automatically.";
+    foot.textContent = "veloasm dev overlay \u00b7 save the fix and this page reloads automatically.";
     head.append(icon, title, close);
     card.append(head, msg, foot);
     root.appendChild(card);
@@ -2687,7 +2688,37 @@ const DEV_OVERLAY_JS: &str = r##"(() => {
     else if (m.type === "buildFailure") {
       console.error("veloasm dev overlay: build failed\n" + m.data.reason);
       if (!panel) panel = buildPanel();
-      document.getElementById("veloasm-dev-overlay-msg").textContent = m.data.reason || "Unknown build failure";
+      const summaryEl = document.getElementById("veloasm-dev-overlay-msg");
+      if (summaryEl) summaryEl.textContent = m.data.reason || "Unknown build failure";
+      try {
+        fetch("http://127.0.0.1:3197/_veloasm/diagnostics").then((r) => r.json()).then((d) => {
+          if (!d || !d.errors || !d.errors.length) return;
+          const msgEl = document.getElementById("veloasm-dev-overlay-msg");
+          if (!msgEl) return;
+          msgEl.textContent = "";
+          d.errors.slice(0, 8).forEach((e) => {
+            if (e.spans && e.spans.length) {
+              const s = e.spans[0];
+              const loc = document.createElement("div");
+              loc.textContent = s.file + ":" + s.line + ":" + s.col;
+              loc.setAttribute("style", "display:inline-block;margin:0 .5rem .5rem 0;padding:.2rem .7rem;border-radius:999px;background:#312e81;color:#e0e7ff;font-size:.78rem;font-family:ui-monospace,Menlo,monospace;");
+              msgEl.appendChild(loc);
+            }
+            const head = document.createElement("div");
+            head.textContent = e.message || "compile error";
+            head.setAttribute("style", "font-weight:700;color:#fca5a5;margin:.25rem 0;");
+            msgEl.appendChild(head);
+            if (e.detail) {
+              const pre = document.createElement("pre");
+              pre.textContent = e.detail;
+              pre.setAttribute("style", "margin:0 0 1rem;white-space:pre-wrap;word-break:break-word;color:#e2e8f0;font-size:.78rem;");
+              msgEl.appendChild(pre);
+            }
+          });
+          const foot = document.getElementById("veloasm-dev-overlay-foot");
+          if (foot) foot.textContent = "veloasm dev overlay \u00b7 full diagnostic above, live from the dev server \u00b7 save the fix and this page reloads automatically.";
+        }).catch(() => {});
+      } catch (_e) {}
     }
   };
 })();"##;

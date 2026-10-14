@@ -41,8 +41,30 @@ is untouched.
 The overlay logic lives as a JS constant inside `crates/velo/src/lib.rs`
 (`DEV_OVERLAY_JS`) and is evaluated once on mount via `install_dev_overlay()`.
 A cross-project editable stand-alone copy of the same overlay is kept at
-`docs/templates/Veloasm-error-overlay.js` for reference — the compiled built-in is
+`docs/templates/Veloasm-error-overlay.js` for reference - the compiled built-in is
 the canonical, always-in-sync version you get for free.
+
+### Full diagnostics via the `veloasm dev` sidecar
+
+Trunk's `buildFailure` message carries only a pipeline summary, so a bare
+`trunk serve` panel can never show `file:line:col`. Run the dev server through
+the CLI instead:
+
+```bash
+veloasm dev
+```
+
+`veloasm dev` wraps `trunk serve`, pipes its stderr, parses each rustc `error`
+block (message + `-->` spans), and serves the latest failure at
+`http://127.0.0.1:3197/_veloasm/diagnostics`. The overlay fetches it on
+`buildFailure` and renders location chips plus messages in the panel. Terminal
+output still streams through untouched.
+
+- No sidecar (raw `trunk serve`, production builds, HTTPS dev setups): the
+  panel falls back to Trunk's summary. Nothing breaks; you just get less.
+- Port `3197` busy: `dev` warns and continues without diagnostics.
+- Parser and server live in `crates/velo-cli/src/diag.rs`, covered by host
+  unit tests (`cargo test -p veloasm-cli`).
 
 ### Test-driving the overlay
 

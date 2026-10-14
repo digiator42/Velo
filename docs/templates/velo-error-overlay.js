@@ -24,12 +24,14 @@
  *   - `{ type: "reload" }` — the build recovered; the page reloads and the
  *     panel disappears with it.
  *
- * NOTE on `reason`: Trunk's WebSocket only carries a pipeline summary (e.g.
+ * Full diagnostics: Trunk's WebSocket only carries a pipeline summary (e.g.
  * "error from build pipeline ... cargo returned a bad status: exit code 101").
- * The full Rust diagnostic with its `--> file.rs:line:col` span is printed to
- * the `trunk serve` terminal, not streamed to the page — so the panel points
- * you there, and only shows `file:line:col` when it happens to appear in the
- * message. (veloasm's own error boundaries catch runtime faults in-app; this
+ * Under `veloasm dev`, a sidecar (`crates/velo-cli/src/diag.rs`) parses
+ * Trunk's stderr and serves the rustc blocks at
+ * `http://127.0.0.1:3197/_veloasm/diagnostics`; this panel fetches them on
+ * `buildFailure` and renders file:line:col chips plus messages. Without the
+ * sidecar (raw `trunk serve`, production, HTTPS dev) the summary above is all
+ * there is. (veloasm's own error boundaries catch runtime faults in-app; this
  * overlay is strictly for dev-time compile failures.)
  *
  * This script is deliberately inert when the app is NOT served by Trunk in
@@ -222,6 +224,47 @@
       loc.textContent = at || "";
     }
     if (msg) msg.textContent = reason || "Unknown build failure";
+    // Full diagnostic from the `veloasm dev` sidecar (parsed rustc output
+    // with file:line:col spans). Absent under raw `trunk serve`, in
+    // production, or on HTTPS dev setups — the summary above stays.
+    try {
+      fetch("http://127.0.0.1:3197/_veloasm/diagnostics")
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d || !d.errors || !d.errors.length) return;
+          const panelMsg = document.getElementById("veloasm-dev-overlay-msg");
+          if (!panelMsg) return;
+          panelMsg.textContent = "";
+          d.errors.slice(0, 8).forEach((e) => {
+            if (e.spans && e.spans.length) {
+              const s = e.spans[0];
+              const chip = document.createElement("div");
+              chip.textContent = `${s.file}:${s.line}:${s.col}`;
+              chip.setAttribute(
+                "style",
+                "display:inline-block;margin:0 .5rem .5rem 0;padding:.2rem .7rem;border-radius:999px;background:#312e81;color:#e0e7ff;font-size:.78rem;",
+              );
+              panelMsg.appendChild(chip);
+            }
+            const head = document.createElement("div");
+            head.textContent = e.message || "compile error";
+            head.setAttribute("style", "font-weight:700;color:#fca5a5;margin:.25rem 0;");
+            panelMsg.appendChild(head);
+            if (e.detail) {
+              const pre = document.createElement("pre");
+              pre.textContent = e.detail;
+              pre.setAttribute(
+                "style",
+                "margin:0 0 1rem;white-space:pre-wrap;word-break:break-word;color:#e2e8f0;font-size:.78rem;",
+              );
+              panelMsg.appendChild(pre);
+            }
+          });
+          const panelLoc = document.getElementById("veloasm-dev-overlay-loc");
+          if (panelLoc) panelLoc.style.display = "none";
+        })
+        .catch(() => {});
+    } catch (_e) {}
   };
 
   const connect = () => {

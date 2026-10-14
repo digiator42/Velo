@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+
+mod diag;
 
 #[derive(Parser)]
 #[command(
@@ -102,12 +105,37 @@ fn cmd_dev(name: Option<&str>) -> Result<()> {
     println!("  Starting dev server for {}...", index.display());
     println!("  (Ctrl+C to stop)");
 
-    let status = Command::new("trunk")
+    // Pipe Trunk's stderr so rustc diagnostics can be parsed for the dev
+    // overlay's full file:line:col panel (Trunk's own WebSocket only carries
+    // a pipeline summary). Terminal output is echoed through untouched.
+    // Run Trunk from the project directory: it resolves the target crate
+    // relative to its working directory, not the index.html path.
+    let mut child = Command::new("trunk")
         .arg("serve")
         .arg("--watch")
         .arg(&index)
-        .status()
+        .current_dir(&dir)
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| "Failed to run trunk serve. Is trunk installed? (cargo install trunk)")?;
+
+    let diags = diag::DiagState::new();
+    match diag::serve(Arc::clone(&diags)) {
+        Ok(()) => println!(
+            "  Diagnostics sidecar at http://127.0.0.1:{}/_veloasm/diagnostics",
+            diag::DIAG_PORT
+        ),
+        Err(e) => eprintln!(
+            "  (diagnostics sidecar unavailable: {e}; overlay falls back to Trunk's summary)"
+        ),
+    }
+    if let Some(stderr) = child.stderr.take() {
+        diag::pump_trunk_stderr(stderr, diags);
+    }
+
+    let status = child
+        .wait()
+        .with_context(|| "Failed to wait on trunk serve")?;
 
     if !status.success() {
         anyhow::bail!("trunk serve exited with status {}", status);
