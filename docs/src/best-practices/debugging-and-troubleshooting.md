@@ -31,7 +31,21 @@
 
 ---
 
-## 4. Stale Cargo Build Cache
+## 4. Attribute-family mix-ups (`class:` vs `class`, `on:`)
+
+* **Symptom**: `class:on="user-card"`, `class:active="yes"`, `on:click="handler"`.
+* **Cause**: each prefix is its own contract — `class:<name>` toggles take a
+  boolean (`class:active={ is_on }`), `on:<event>` takes a closure
+  (`on:click={ move |_| … }`), and static classes are plain `class="…"`.
+  A string literal in a toggle/handler slot is always a mistake, and the
+  macro rejects it at expansion with a pointer (it cannot type-check the
+  braced cases, so those stay rustc's job).
+* **Rule of thumb**: if the value never changes, it is almost certainly a
+  plain `class="…"` or a `bind:` away from where you put it.
+
+---
+
+## 5. Stale Cargo Build Cache
 
 * **Problem**: Stale artifacts in `target/` masking compiler errors.
 * **Fix**: Run a clean workspace check targeting wasm:

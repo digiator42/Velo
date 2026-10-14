@@ -11,5 +11,6 @@ veloasm = { path = "../../crates/velo" }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }
 console_error_panic_hook = "0.1"
+leptos = "0.8.22"
 
 

@@ -365,6 +365,28 @@ impl Parse for VNode {
                     }
                 } else {
                     let lit: LitStr = input.parse()?;
+                    // Friendly DX: a string literal where a toggle-bool or a
+                    // handler belongs is never intentional, and would otherwise
+                    // fail 200 lines deep in generated code (e.g. E0271 bool
+                    // vs &str for `class:on="user-card"`). Fail here instead,
+                    // pointing at the literal.
+                    if key.starts_with("class:") {
+                        let want = key.strip_prefix("class:").unwrap();
+                        return Err(syn::Error::new(
+                            lit.span(),
+                            format!(
+                                "Velo: `class:{want}=\"...\"` is not valid — `class:` toggles take a boolean (e.g. `class:{want}={{ is_on }}`); for a static class use plain `class=\"...\"`"
+                            ),
+                        ));
+                    }
+                    if key.starts_with("on:") {
+                        return Err(syn::Error::new(
+                            lit.span(),
+                            format!(
+                                "Velo: `{key}=\"...\"` is not valid — event handlers take a closure (e.g. `{key}={{ move |_| ... }}`)"
+                            ),
+                        ));
+                    }
                     Expr::Lit(syn::ExprLit {
                         attrs: vec![],
                         lit: syn::Lit::Str(lit),
