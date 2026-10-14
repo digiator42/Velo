@@ -110,9 +110,13 @@ fn cmd_dev(name: Option<&str>) -> Result<()> {
     // a pipeline summary). Terminal output is echoed through untouched.
     // Run Trunk from the project directory: it resolves the target crate
     // relative to its working directory, not the index.html path.
+    // NOTE: `--watch` takes a path value (it is not a bare flag), so the
+    // project dir is passed explicitly — otherwise only index.html itself
+    // would be watched and src/ edits would never rebuild.
     let mut child = Command::new("trunk")
         .arg("serve")
         .arg("--watch")
+        .arg(&dir)
         .arg(&index)
         .current_dir(&dir)
         .stderr(Stdio::piped())
