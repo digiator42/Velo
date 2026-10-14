@@ -287,17 +287,43 @@ pub fn to_json(errors: &[CompileError]) -> String {
 // Pump + sidecar server
 // ---------------------------------------------------------------------------
 
+/// Paint one echoed line for the terminal: rustc `error` headers go bright
+/// red, `warning` headers yellow. Everything else passes through byte-for-
+/// byte (including any colors cargo emitted itself). Honors `NO_COLOR`.
+fn paint_line<'a>(line: &'a str, color: bool) -> Cow<'a, str> {
+    if !color {
+        return Cow::Borrowed(line);
+    }
+    let stripped = strip_ansi(line);
+    // Already colorized lines keep their own colors; only uncolored error /
+    // warning headers get painted so failures pop in monochrome pipes.
+    if stripped == line {
+        let trimmed = stripped.trim_start();
+        if is_error_start(trimmed) {
+            return Cow::Owned(format!("\x1b[1;31m{line}\x1b[0m"));
+        }
+        if trimmed.starts_with("warning:") {
+            return Cow::Owned(format!("\x1b[1;33m{line}\x1b[0m"));
+        }
+    }
+    Cow::Borrowed(line)
+}
+
 /// Read Trunk's stderr line by line on a worker thread: echo every line to
 /// our own stderr (so the terminal stays live) and fold `error` blocks into
 /// `state` for the overlay to fetch.
 pub fn pump_trunk_stderr(stderr: ChildStderr, state: Arc<DiagState>) {
+    // Piped output looks monochrome unless asked otherwise; the caller sets
+    // `CARGO_TERM_COLOR`/`CLICOLOR_FORCE` on the Trunk child for rich colors.
+    // Either way, error headers are painted here so they never stay white.
+    let color = std::env::var_os("NO_COLOR").is_none();
     thread::spawn(move || {
         let reader = BufReader::new(stderr);
         let mut out: Vec<CompileError> = Vec::new();
         let mut cur = Builder::default();
         for line in reader.lines() {
             let Ok(line) = line else { break };
-            eprintln!("{line}");
+            eprintln!("{}", paint_line(&line, color));
             feed_lines([line.as_str()], false, &mut out, &mut cur);
             state.replace(out.clone());
         }
@@ -418,6 +444,26 @@ mod tests {
             &mut cur,
         );
         assert!(out.is_empty(), "stale errors must clear on rebuild");
+    }
+
+    #[test]
+    fn paint_line_highlights_error_and_warning_headers() {
+        assert_eq!(
+            paint_line("error[E0308]: mismatched types", true),
+            "\x1b[1;31merror[E0308]: mismatched types\x1b[0m"
+        );
+        assert_eq!(
+            paint_line("warning: unused variable", true),
+            "\x1b[1;33mwarning: unused variable\x1b[0m"
+        );
+        // Plain lines and already-colored lines pass through untouched.
+        assert_eq!(paint_line("   Compiling x", true), "   Compiling x");
+        assert_eq!(
+            paint_line("\x1b[31merror: boom\x1b[0m", true),
+            "\x1b[31merror: boom\x1b[0m"
+        );
+        // NO_COLOR equivalent: off switch disables all painting.
+        assert_eq!(paint_line("error: boom", false), "error: boom");
     }
 
     #[test]

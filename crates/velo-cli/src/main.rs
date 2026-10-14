@@ -113,13 +113,22 @@ fn cmd_dev(name: Option<&str>) -> Result<()> {
     // NOTE: `--watch` takes a path value (it is not a bare flag), so the
     // project dir is passed explicitly — otherwise only index.html itself
     // would be watched and src/ edits would never rebuild.
-    let mut child = Command::new("trunk")
-        .arg("serve")
+    //
+    // Colors: a piped stderr makes cargo/rustc go monochrome, so color is
+    // forced back on (and the pump paints error headers itself as a backstop).
+    // `NO_COLOR` in the environment disables both.
+    let mut cmd = Command::new("trunk");
+    cmd.arg("serve")
         .arg("--watch")
         .arg(&dir)
         .arg(&index)
         .current_dir(&dir)
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    if std::env::var_os("NO_COLOR").is_none() {
+        cmd.env("CARGO_TERM_COLOR", "always")
+            .env("CLICOLOR_FORCE", "1");
+    }
+    let mut child = cmd
         .spawn()
         .with_context(|| "Failed to run trunk serve. Is trunk installed? (cargo install trunk)")?;
 
